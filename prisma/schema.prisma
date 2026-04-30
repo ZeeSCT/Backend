@@ -1,0 +1,365 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  EXECUTIVE
+  PROJECT_MANAGER
+  ENGINEER
+  FINANCE
+  PROCUREMENT
+  QAQC
+  MAINTENANCE
+}
+
+enum HealthStatus {
+  ON_TRACK
+  AT_RISK
+  DELAYED
+  CRITICAL
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+enum MilestoneStatus {
+  PENDING
+  COMPLETED
+  BLOCKED
+}
+
+enum TenderStage {
+  ENQUIRY
+  INTERNAL_REVIEW
+  COSTING
+  RISK_REVIEW
+  APPROVAL_PENDING
+  APPROVED_TO_BID
+  SUBMITTED
+  AWARDED
+  LOST
+  CANCELLED
+  NO_BID
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(ENGINEER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  managedProjects Project[] @relation("ProjectManager")
+}
+
+model Project {
+  id               String  @id @default(cuid())
+  code             String  @unique
+  name             String
+  clientName       String
+  portfolio        String
+  projectManagerId String?
+
+  contractValue Decimal? @db.Decimal(18, 2)
+  completionPct Int      @default(0)
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  plannedStart   DateTime?
+  plannedFinish  DateTime?
+  forecastFinish DateTime?
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectManager User? @relation("ProjectManager", fields: [projectManagerId], references: [id])
+
+  // ✅ HEALTH TRACKING (IMPORTANT FOR YOUR DASHBOARD)
+  healthHistories ProjectHealthHistory[]
+
+  tenders          Tender[]
+  activities       PlanningActivity[]
+  milestones       PlanningMilestone[]
+  resources        PlanningResource[]
+  inspections      Inspection[]
+  ncrs             Ncr[]
+  materialRequests MaterialRequest[]
+  purchaseOrders   PurchaseOrder[]
+  assets           Asset[]
+}
+
+model Tender {
+  id         String  @id @default(cuid())
+  refNo      String  @unique
+  title      String
+  clientName String
+  source     String?
+
+  estimatedValue Decimal? @db.Decimal(18, 2)
+  bidValue       Decimal? @db.Decimal(18, 2)
+
+  stage TenderStage @default(ENQUIRY)
+
+  submissionDeadline DateTime?
+  projectId          String?
+  owner              String?
+  riskScore          Int?
+  marginPct          Decimal?  @db.Decimal(5, 2)
+
+  status RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project? @relation(fields: [projectId], references: [id])
+}
+
+model PlanningDocument {
+  id        String @id @default(cuid())
+  projectId String
+  fileName  String
+  revision  String
+  planType  String @default("BASELINE")
+
+  baselineStart  DateTime?
+  baselineFinish DateTime?
+  forecastFinish DateTime?
+
+  status RecordStatus @default(ACTIVE)
+
+  uploadedBy String?
+  uploadedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities PlanningActivity[]
+  milestones PlanningMilestone[]
+  resources  PlanningResource[]
+}
+
+model PlanningActivity {
+  id         String  @id @default(cuid())
+  projectId  String
+  documentId String?
+
+  wbsCode      String?
+  activityId   String
+  activityName String
+
+  discipline   String?
+  location     String?
+  durationDays Int?
+
+  plannedStart  DateTime?
+  plannedFinish DateTime?
+  actualStart   DateTime?
+  actualFinish  DateTime?
+
+  floatDays       Int?
+  percentComplete Int  @default(0)
+
+  owner      String?
+  isCritical Boolean @default(false)
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, activityId])
+  @@index([projectId])
+  @@index([activityId])
+  @@index([wbsCode])
+}
+
+model PlanningMilestone {
+  id        String @id @default(cuid())
+  projectId String
+
+  documentId String?
+
+  milestoneCode String?
+  milestoneName String
+
+  baselineDate DateTime?
+  forecastDate DateTime?
+  actualDate   DateTime?
+
+  delayDays Int @default(0)
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+}
+
+model PlanningResource {
+  id         String  @id @default(cuid())
+  projectId  String
+  documentId String?
+
+  activityId   String?
+  resourceRole String
+  resourceName String?
+
+  plannedQty   Int @default(0)
+  availableQty Int @default(0)
+
+  requiredDate DateTime?
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([activityId])
+}
+
+model ProjectHealthHistory {
+  id        String @id @default(cuid())
+  projectId String
+
+  oldStatus HealthStatus?
+  newStatus HealthStatus
+
+  changedAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([changedAt])
+}
+
+model Inspection {
+  id        String @id @default(cuid())
+  refNo     String @unique
+  projectId String
+
+  activity       String
+  inspectionType String?
+
+  inspectorName String?
+  scheduledAt   DateTime?
+
+  outcome String?
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Ncr {
+  id        String @id @default(cuid())
+  refNo     String @unique
+  projectId String
+
+  description String
+  packageName String?
+
+  raisedBy String?
+  severity String?
+
+  healthStatus HealthStatus @default(AT_RISK)
+
+  dateRaised DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model MaterialRequest {
+  id        String @id @default(cuid())
+  refNo     String @unique
+  projectId String
+
+  materialName String
+
+  plannedQty   Int
+  availableQty Int @default(0)
+
+  requiredDate DateTime?
+  requestedBy  String?
+  priority     String?
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model PurchaseOrder {
+  id        String @id @default(cuid())
+  refNo     String @unique
+  projectId String
+
+  vendorName   String
+  materialName String
+
+  amount Decimal? @db.Decimal(18, 2)
+
+  issuedAt         DateTime?
+  expectedDelivery DateTime?
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Asset {
+  id        String @id @default(cuid())
+  assetCode String @unique
+  projectId String
+
+  name      String
+  assetType String
+  location  String?
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
