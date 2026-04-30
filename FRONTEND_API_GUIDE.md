@@ -3,6 +3,7 @@ Base: http://localhost:3001
 
 POST /api/v1/auth/login
 GET /api/v1/dashboard/executive
+GET /api/v1/portfolio-overview
 GET /api/v1/projects
 GET /api/v1/project-plans/:projectId/summary
 GET /api/v1/project-plans/:projectId/activities

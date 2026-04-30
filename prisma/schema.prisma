@@ -1,12 +1,11 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
-
 enum UserRole {
   SUPER_ADMIN
   ADMIN
@@ -61,25 +60,44 @@ model User {
 }
 
 model Project {
-  id               String   @id @default(cuid())
-  code             String   @unique
+  id               String       @id @default(cuid())
+  code             String       @unique
   name             String
   clientName       String
+
+  // Keep this for now because your existing data/API may already use it.
+  // Store values like: its, traffic, its-maint, traffic-maint
   portfolio        String
+
+  // New proper relation to PortfolioCategory
+  portfolioCategoryId String?
+  portfolioCategory   PortfolioCategory? @relation(fields: [portfolioCategoryId], references: [id], onDelete: SetNull)
+
   projectManagerId String?
-  contractValue    Decimal? @db.Decimal(18,2)
-  completionPct    Int      @default(0)
-  plannedProgress  Int      @default(0)
-  actualProgress   Int      @default(0)
+  contractValue    Decimal?     @db.Decimal(18,2)
+
+  completionPct    Int          @default(0)
+  plannedProgress  Int          @default(0)
+  actualProgress   Int          @default(0)
   healthStatus     HealthStatus @default(ON_TRACK)
+
+  // Dashboard fields for portfolio overview
+  delayedApprovals  Int      @default(0)
+  blockedItems      Int      @default(0)
+  billingReadyAmount Decimal? @db.Decimal(18,2)
+  topIssue          String?
+  topIssueAgeDays   Int?
+
   plannedStart     DateTime?
   plannedFinish    DateTime?
   forecastFinish   DateTime?
   status           RecordStatus @default(ACTIVE)
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   projectManager   User? @relation("ProjectManager", fields: [projectManagerId], references: [id])
+
   tenders          Tender[]
   activities       PlanningActivity[]
   milestones       PlanningMilestone[]
@@ -89,6 +107,28 @@ model Project {
   materialRequests MaterialRequest[]
   purchaseOrders   PurchaseOrder[]
   assets           Asset[]
+
+  @@index([portfolio])
+  @@index([portfolioCategoryId])
+  @@index([status])
+  @@index([healthStatus])
+}
+
+model PortfolioCategory {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String   @unique
+  description  String?
+  isActive     Boolean  @default(true)
+  displayOrder Int      @default(0)
+
+  projects     Project[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
 }
 
 model Tender {

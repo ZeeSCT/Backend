@@ -1,1 +1,98 @@
-import { Injectable } from '@nestjs/common'; import { HealthStatus } from '@prisma/client'; import { PrismaService } from '@/common/prisma/prisma.service'; @Injectable() export class PlanningService{constructor(private prisma:PrismaService){} async summary(projectId:string){const [project,totalActivities,totalMilestones,criticalActivities,delayedActivities,negativeFloat,resourceShortages]=await Promise.all([this.prisma.project.findUnique({where:{id:projectId}}),this.prisma.planningActivity.count({where:{projectId}}),this.prisma.planningMilestone.count({where:{projectId}}),this.prisma.planningActivity.count({where:{projectId,isCritical:true}}),this.prisma.planningActivity.count({where:{projectId,healthStatus:{in:[HealthStatus.DELAYED,HealthStatus.CRITICAL]}}}),this.prisma.planningActivity.count({where:{projectId,floatDays:{lt:0}}}),this.prisma.planningResource.count({where:{projectId,healthStatus:{in:[HealthStatus.AT_RISK,HealthStatus.DELAYED,HealthStatus.CRITICAL]}}})]);return {project,totalActivities,totalMilestones,criticalActivities,delayedActivities,negativeFloat,resourceShortages,plannedProgress:project?.plannedProgress||0,actualProgress:project?.actualProgress||0,scheduleVariance:(project?.actualProgress||0)-(project?.plannedProgress||0)}} activities(projectId:string){return this.prisma.planningActivity.findMany({where:{projectId},orderBy:[{plannedStart:'asc'},{activityId:'asc'}],take:500})} milestones(projectId:string){return this.prisma.planningMilestone.findMany({where:{projectId},orderBy:[{baselineDate:'asc'}]})} resources(projectId:string){return this.prisma.planningResource.findMany({where:{projectId},orderBy:[{requiredDate:'asc'}]})} criticalPath(projectId:string){return this.prisma.planningActivity.findMany({where:{projectId,OR:[{isCritical:true},{floatDays:{lte:0}}]},orderBy:[{floatDays:'asc'},{plannedStart:'asc'}]})} async drilldown(projectId:string){const [summary,activities,milestones,resources,criticalPath]=await Promise.all([this.summary(projectId),this.activities(projectId),this.milestones(projectId),this.resources(projectId),this.criticalPath(projectId)]);return {summary,activities,milestones,resources,criticalPath}}}
+import { Injectable } from "@nestjs/common";
+import { HealthStatus } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
+@Injectable()
+export class PlanningService {
+  constructor(private prisma: PrismaService) {}
+  async summary(projectId: string) {
+    const [
+      project,
+      totalActivities,
+      totalMilestones,
+      criticalActivities,
+      delayedActivities,
+      negativeFloat,
+      resourceShortages,
+    ] = await Promise.all([
+      this.prisma.project.findUnique({ where: { id: projectId } }),
+      this.prisma.planningActivity.count({ where: { projectId } }),
+      this.prisma.planningMilestone.count({ where: { projectId } }),
+      this.prisma.planningActivity.count({
+        where: { projectId, isCritical: true },
+      }),
+      this.prisma.planningActivity.count({
+        where: {
+          projectId,
+          healthStatus: { in: [HealthStatus.DELAYED, HealthStatus.CRITICAL] },
+        },
+      }),
+      this.prisma.planningActivity.count({
+        where: { projectId, floatDays: { lt: 0 } },
+      }),
+      this.prisma.planningResource.count({
+        where: {
+          projectId,
+          healthStatus: {
+            in: [
+              HealthStatus.AT_RISK,
+              HealthStatus.DELAYED,
+              HealthStatus.CRITICAL,
+            ],
+          },
+        },
+      }),
+    ]);
+    return {
+      project,
+      totalActivities,
+      totalMilestones,
+      criticalActivities,
+      delayedActivities,
+      negativeFloat,
+      resourceShortages,
+      plannedProgress: project?.plannedProgress || 0,
+      actualProgress: project?.actualProgress || 0,
+      scheduleVariance:
+        (project?.actualProgress || 0) - (project?.plannedProgress || 0),
+    };
+  }
+  activities(projectId: string) {
+    return this.prisma.planningActivity.findMany({
+      where: { projectId },
+      orderBy: [{ plannedStart: "asc" }, { activityId: "asc" }],
+      take: 500,
+    });
+  }
+  milestones(projectId: string) {
+    return this.prisma.planningMilestone.findMany({
+      where: { projectId },
+      orderBy: [{ baselineDate: "asc" }],
+    });
+  }
+  resources(projectId: string) {
+    return this.prisma.planningResource.findMany({
+      where: { projectId },
+      orderBy: [{ requiredDate: "asc" }],
+    });
+  }
+  criticalPath(projectId: string) {
+    return this.prisma.planningActivity.findMany({
+      where: {
+        projectId,
+        OR: [{ isCritical: true }, { floatDays: { lte: 0 } }],
+      },
+      orderBy: [{ floatDays: "asc" }, { plannedStart: "asc" }],
+    });
+  }
+  async drilldown(projectId: string) {
+    const [summary, activities, milestones, resources, criticalPath] =
+      await Promise.all([
+        this.summary(projectId),
+        this.activities(projectId),
+        this.milestones(projectId),
+        this.resources(projectId),
+        this.criticalPath(projectId),
+      ]);
+    return { summary, activities, milestones, resources, criticalPath };
+  }
+}
