@@ -1,0 +1,1 @@
+import { Module } from '@nestjs/common'; import { QaqcController } from './qaqc.controller'; import { QaqcService } from './qaqc.service'; @Module({controllers:[QaqcController],providers:[QaqcService]}) export class QaqcModule{}
