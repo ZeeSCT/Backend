@@ -4,7 +4,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
-import { PortfolioOverviewModule } from './modules/portfolio-overview/portfolio-overview.module';
+import { PortfolioOverviewModule } from './modules/executive/portfolio-overview/portfolio-overview.module';
 import { ExecutiveModule } from './modules/executive/executive.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TendersModule } from './modules/tenders/tenders.module';
