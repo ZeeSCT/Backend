@@ -211,6 +211,7 @@ async function main() {
     actualProgress: number;
     healthStatus: HealthStatus;
     delayedApprovals?: number;
+    blockedItems?: number;
     billingReadyAmount?: number | null;
     plannedStart?: Date;
     plannedFinish?: Date;
@@ -271,6 +272,7 @@ async function main() {
       healthStatus: input.healthStatus,
 
       delayedApprovals: input.delayedApprovals ?? 0,
+      blockedItems: input.blockedItems ?? 0,
       billingReadyAmount: input.billingReadyAmount ?? null,
 
       plannedStart: input.plannedStart ?? null,
@@ -436,6 +438,7 @@ async function main() {
     actualProgress: 42,
     healthStatus: HealthStatus.CRITICAL,
     delayedApprovals: 7,
+    blockedItems: 3,
     billingReadyAmount: 1800000,
 
     plannedStart: d("2025-01-05"),
@@ -526,6 +529,7 @@ async function main() {
     actualProgress: 58,
     healthStatus: HealthStatus.DELAYED,
     delayedApprovals: 3,
+    blockedItems: 1,
     billingReadyAmount: 1100000,
 
     plannedStart: d("2025-04-01"),
@@ -559,6 +563,7 @@ async function main() {
     actualProgress: 71,
     healthStatus: HealthStatus.AT_RISK,
     delayedApprovals: 2,
+    blockedItems: 0,
     billingReadyAmount: 2000000,
 
     plannedStart: d("2025-03-01"),
@@ -588,6 +593,7 @@ async function main() {
     actualProgress: 83,
     healthStatus: HealthStatus.ON_TRACK,
     delayedApprovals: 1,
+    blockedItems: 3,
     billingReadyAmount: 1500000,
 
     plannedStart: d("2025-05-01"),
@@ -611,6 +617,7 @@ async function main() {
     actualProgress: 89,
     healthStatus: HealthStatus.ON_TRACK,
     delayedApprovals: 0,
+    blockedItems: 1,
     billingReadyAmount: 1600000,
 
     plannedStart: d("2025-06-01"),
@@ -630,6 +637,7 @@ async function main() {
     actualProgress: 67,
     healthStatus: HealthStatus.AT_RISK,
     delayedApprovals: 5,
+    blockedItems: 2,
     billingReadyAmount: 1000000,
 
     plannedStart: d("2025-07-01"),
@@ -663,6 +671,7 @@ async function main() {
     actualProgress: 76,
     healthStatus: HealthStatus.ON_TRACK,
     delayedApprovals: 0,
+    blockedItems: 0,
     billingReadyAmount: 1100000,
 
     plannedStart: d("2025-02-15"),
@@ -682,6 +691,7 @@ async function main() {
     actualProgress: 62,
     healthStatus: HealthStatus.DELAYED,
     delayedApprovals: 6,
+    blockedItems: 3,
     billingReadyAmount: 1800000,
 
     plannedStart: d("2025-04-15"),
