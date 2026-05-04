@@ -53,6 +53,15 @@ enum TenderStage {
   NO_BID
 }
 
+enum InvoiceStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -101,7 +110,9 @@ model Project {
   ncrs             Ncr[]
   materialRequests MaterialRequest[]
   purchaseOrders   PurchaseOrder[]
+  invoices         Invoice[]
   assets           Asset[]
+  
 }
 
 model Tender {
@@ -205,12 +216,16 @@ model PlanningMilestone {
   forecastDate DateTime?
   actualDate   DateTime?
 
-  delayDays Int @default(0)
+  delayDays    Int @default(0)
+
+  status        MilestoneStatus @default(PENDING)
+  billableValue Decimal?     @db.Decimal(18,2)
+  approvedForBilling Boolean @default(false)
 
   healthStatus HealthStatus @default(ON_TRACK)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -346,6 +361,30 @@ model PurchaseOrder {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
+
+model Invoice {
+  id          String   @id @default(cuid())
+  invoiceNo   String   @unique
+  projectId   String
+
+  amount      Decimal  @db.Decimal(18,2)
+
+  invoiceDate DateTime
+  dueDate     DateTime
+
+  paidAmount  Decimal  @default(0) @db.Decimal(18,2)
+
+  status      InvoiceStatus @default(DRAFT)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+}
+
 
 model Asset {
   id        String @id @default(cuid())

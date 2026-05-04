@@ -6,5 +6,6 @@ import { PrismaService } from '@/common/prisma/prisma.service';
 @Module({
   controllers: [ProjectHealthController],
   providers: [ProjectHealthService, PrismaService],
+  exports: [ProjectHealthService],
 })
-export class ProjectHealthModule {}
+export class ProjectHealthModule {} 

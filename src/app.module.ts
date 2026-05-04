@@ -14,9 +14,8 @@ import { QaqcModule } from './modules/qaqc/qaqc.module';
 import { ProcurementModule } from './modules/procurement/procurement.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ScreenCatalogModule } from './modules/screen-catalog/screen-catalog.module';
-
-// ✅ ADD THIS
 import { ProjectHealthModule } from './modules/executive/project-health/project-health.module';
+import { RevenueBillingModule } from './modules/executive/revenue-billing/revenue-billing.module';
 
 @Module({
   imports: [
@@ -34,6 +33,7 @@ import { ProjectHealthModule } from './modules/executive/project-health/project-
     ProcurementModule,
     MaintenanceModule,
     ProjectHealthModule,
+    RevenueBillingModule,
   ],
 })
 export class AppModule {}

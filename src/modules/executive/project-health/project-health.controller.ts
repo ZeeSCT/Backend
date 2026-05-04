@@ -6,22 +6,22 @@ export class ProjectHealthController {
   constructor(private service: ProjectHealthService) {}
 
   @Get('summary')
-  summary() {
+  getSummary() {
     return this.service.getHealthSummary();
   }
 
   @Get('delayed-milestones')
-  delayedMilestones() {
+  getDelayedMilestones() {
     return this.service.getDelayedMilestones();
   }
 
   @Get('blocked-items')
-  blockedItems() {
+  getBlockedItems() {
     return this.service.getBlockedItems();
   }
 
   @Get('trend')
-  trend() {
+  getTrend() {
     return this.service.getHealthTrend();
   }
 }

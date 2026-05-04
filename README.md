@@ -17,7 +17,7 @@ set NODE_TLS_REJECT_UNAUTHORIZED=0
 npm run prisma:generate
 npm run migrate:init
 npm run db:seed
-npm run start:devn
+npm run start:dev
 
 ```
 

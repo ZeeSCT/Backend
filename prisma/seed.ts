@@ -1,22 +1,23 @@
-import { PrismaClient, HealthStatus } from '@prisma/client';
+import { PrismaClient, HealthStatus, InvoiceStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding started...');
 
-  // CLEAN DB (important for repeatable demo)
+  // CLEAN DB
   await prisma.projectHealthHistory.deleteMany();
   await prisma.planningMilestone.deleteMany();
   await prisma.materialRequest.deleteMany();
   await prisma.purchaseOrder.deleteMany();
   await prisma.ncr.deleteMany();
+  await prisma.invoice.deleteMany(); // ✅ ADDED
   await prisma.project.deleteMany();
 
   // ============================
-  // CREATE PROJECTS
+  // CREATE PROJECTS (FIXED)
   // ============================
-  const projects = await prisma.project.createMany({
+  await prisma.project.createMany({
     data: [
       {
         id: 'p1',
@@ -25,6 +26,8 @@ async function main() {
         clientName: 'Client A',
         portfolio: 'MEP',
         healthStatus: 'ON_TRACK',
+        completionPct: 65,
+        contractValue: 42000000, // ✅ FIXED
       },
       {
         id: 'p2',
@@ -33,6 +36,7 @@ async function main() {
         clientName: 'Client B',
         portfolio: 'Industrial',
         healthStatus: 'AT_RISK',
+        contractValue: 31000000,
       },
       {
         id: 'p3',
@@ -41,6 +45,7 @@ async function main() {
         clientName: 'Client C',
         portfolio: 'Highrise',
         healthStatus: 'DELAYED',
+        contractValue: 21000000,
       },
       {
         id: 'p4',
@@ -49,6 +54,7 @@ async function main() {
         clientName: 'Client D',
         portfolio: 'Residential',
         healthStatus: 'CRITICAL',
+        contractValue: 26000000,
       },
       {
         id: 'p5',
@@ -57,6 +63,60 @@ async function main() {
         clientName: 'Client E',
         portfolio: 'Warehouse',
         healthStatus: 'ON_TRACK',
+        contractValue: 38000000,
+      },
+    ],
+  });
+
+  // ============================
+  // INVOICES (🔥 NEW - REQUIRED FOR REVENUE)
+  // ============================
+  await prisma.invoice.createMany({
+    data: [
+      {
+        invoiceNo: 'INV-001',
+        projectId: 'p1',
+        amount: 12000000,
+        paidAmount: 8000000,
+        invoiceDate: new Date(),
+        dueDate: new Date(Date.now() + 10 * 86400000),
+        status: InvoiceStatus.PARTIALLY_PAID,
+      },
+      {
+        invoiceNo: 'INV-002',
+        projectId: 'p1',
+        amount: 5000000,
+        paidAmount: 0,
+        invoiceDate: new Date(),
+        dueDate: new Date(Date.now() - 5 * 86400000),
+        status: InvoiceStatus.OVERDUE,
+      },
+      {
+        invoiceNo: 'INV-003',
+        projectId: 'p2',
+        amount: 18000000,
+        paidAmount: 15000000,
+        invoiceDate: new Date(),
+        dueDate: new Date(),
+        status: InvoiceStatus.PARTIALLY_PAID,
+      },
+      {
+        invoiceNo: 'INV-004',
+        projectId: 'p3',
+        amount: 14900000,
+        paidAmount: 14900000,
+        invoiceDate: new Date(),
+        dueDate: new Date(),
+        status: InvoiceStatus.PAID,
+      },
+      {
+        invoiceNo: 'INV-005',
+        projectId: 'p4',
+        amount: 8000000,
+        paidAmount: 0,
+        invoiceDate: new Date(),
+        dueDate: new Date(Date.now() - 15 * 86400000),
+        status: InvoiceStatus.OVERDUE,
       },
     ],
   });
@@ -65,27 +125,54 @@ async function main() {
   // DELAYED MILESTONES
   // ============================
   await prisma.planningMilestone.createMany({
-    data: [
-      { projectId: 'p1', milestoneName: 'M1', delayDays: 5 },
-      { projectId: 'p1', milestoneName: 'M2', delayDays: 3 },
-      { projectId: 'p1', milestoneName: 'M3', delayDays: 2 },
-
-      { projectId: 'p2', milestoneName: 'M1', delayDays: 4 },
-      { projectId: 'p2', milestoneName: 'M2', delayDays: 2 },
-
-      { projectId: 'p3', milestoneName: 'M1', delayDays: 6 },
-
-      { projectId: 'p4', milestoneName: 'M1', delayDays: 7 },
-
-      { projectId: 'p5', milestoneName: 'M1', delayDays: 1 },
-    ],
-  });
+  data: [
+    {
+      projectId: 'p1',
+      milestoneName: 'M1',
+      delayDays: 5,
+      status: 'COMPLETED',
+      approvedForBilling: true,
+      billableValue: 5000000,
+    },
+    {
+      projectId: 'p2',
+      milestoneName: 'M1',
+      delayDays: 4,
+      status: 'COMPLETED',
+      approvedForBilling: true,
+      billableValue: 3000000,
+    },
+    {
+      projectId: 'p3',
+      milestoneName: 'M1',
+      delayDays: 6,
+      status: 'COMPLETED',
+      approvedForBilling: false,
+      billableValue: 2000000,
+    },
+    {
+      projectId: 'p4',
+      milestoneName: 'M1',
+      delayDays: 7,
+      status: 'PENDING',
+      approvedForBilling: false,
+      billableValue: 1000000,
+    },
+    {
+      projectId: 'p5',
+      milestoneName: 'M1',
+      delayDays: 1,
+      status: 'COMPLETED',
+      approvedForBilling: true,
+      billableValue: 4000000,
+    },
+  ],
+});
 
   // ============================
   // BLOCKED ITEMS
   // ============================
 
-  // NCR (critical)
   await prisma.ncr.create({
     data: {
       refNo: 'NCR1',
@@ -96,36 +183,31 @@ async function main() {
   });
 
   await prisma.materialRequest.create({
-  data: {
-    refNo: "MR1",
-    projectId: "p4",
-    materialName: "Cement",
+    data: {
+      refNo: 'MR1',
+      projectId: 'p4',
+      materialName: 'Cement',
+      plannedQty: 10,
+      availableQty: 2,
+      requiredDate: new Date(),
+      requestedBy: 'John',
+      priority: 'HIGH',
+      healthStatus: 'AT_RISK',
+    },
+  });
 
-    plannedQty: 10,              // ✅ correct field
-    availableQty: 2,             // optional but good for demo
-
-    requiredDate: new Date(),    // ✅ correct field
-
-    requestedBy: "John",
-    priority: "HIGH",
-
-    healthStatus: "AT_RISK"
-  }
-});
-
-  // Purchase order delay
   await prisma.purchaseOrder.create({
     data: {
       refNo: 'PO1',
       projectId: 'p3',
       vendorName: 'Vendor A',
       materialName: 'Steel',
-      expectedDelivery: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      expectedDelivery: new Date(Date.now() - 3 * 86400000),
     },
   });
 
   // ============================
-  // EVENT HISTORY (TREND)
+  // HEALTH HISTORY (TREND)
   // ============================
 
   const now = new Date();
@@ -138,25 +220,21 @@ async function main() {
 
   await prisma.projectHealthHistory.createMany({
     data: [
-      // Week 4
       { projectId: 'p1', newStatus: 'ON_TRACK', changedAt: weeksAgo(4) },
       { projectId: 'p2', newStatus: 'AT_RISK', changedAt: weeksAgo(4) },
       { projectId: 'p3', newStatus: 'DELAYED', changedAt: weeksAgo(4) },
       { projectId: 'p4', newStatus: 'CRITICAL', changedAt: weeksAgo(4) },
 
-      // Week 3
       { projectId: 'p1', newStatus: 'ON_TRACK', changedAt: weeksAgo(3) },
       { projectId: 'p2', newStatus: 'AT_RISK', changedAt: weeksAgo(3) },
       { projectId: 'p3', newStatus: 'DELAYED', changedAt: weeksAgo(3) },
       { projectId: 'p4', newStatus: 'CRITICAL', changedAt: weeksAgo(3) },
 
-      // Week 2
       { projectId: 'p1', newStatus: 'ON_TRACK', changedAt: weeksAgo(2) },
       { projectId: 'p2', newStatus: 'AT_RISK', changedAt: weeksAgo(2) },
       { projectId: 'p3', newStatus: 'DELAYED', changedAt: weeksAgo(2) },
       { projectId: 'p4', newStatus: 'CRITICAL', changedAt: weeksAgo(2) },
 
-      // Week 1
       { projectId: 'p1', newStatus: 'ON_TRACK', changedAt: weeksAgo(1) },
       { projectId: 'p2', newStatus: 'AT_RISK', changedAt: weeksAgo(1) },
       { projectId: 'p3', newStatus: 'DELAYED', changedAt: weeksAgo(1) },
@@ -164,11 +242,11 @@ async function main() {
     ],
   });
 
-  console.log('✅ Seeding completed!');
+  console.log('✅ Seeding completed successfully!');
 }
 
 main()
-  .catch(e => {
+  .catch((e) => {
     console.error(e);
   })
   .finally(async () => {
