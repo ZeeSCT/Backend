@@ -13,6 +13,10 @@ import {
   DocumentationStage,
   PortfolioCategoryCode,
 } from "./documentation-status/documentation-status.service";
+import {
+  ProjectDrillDownService,
+  PortfolioCategoryCode as ProjectDrillDownCategoryCode,
+} from "./project-drilldown/project-drilldown.service";
 
 @ApiTags("Executive Screens")
 
@@ -22,11 +26,11 @@ import {
 @Controller("api/v1/executive")
 export class ExecutiveController {
   constructor(
-    private readonly service: ExecutiveService,
-    private readonly portfolioOverviewService: PortfolioOverviewService,
-    private readonly documentStatusService: DocumentStatusService,
-
-  ) {}
+  private readonly service: ExecutiveService,
+  private readonly portfolioOverviewService: PortfolioOverviewService,
+  private readonly documentStatusService: DocumentStatusService,
+  private readonly projectDrillDownService: ProjectDrillDownService,
+) {} 
 
   @Get("portfolio-overview")
   @ApiOperation({ summary: "HTML 1.1 Portfolio overview screen data" })
@@ -81,10 +85,24 @@ export class ExecutiveController {
     return this.documentStatusService.getDocumentStatus(category, stage);
   }
 
-  @Get("project-drill-down")
-  @ApiQuery({ name: "projectId", required: false })
-  @ApiOperation({ summary: "HTML 1.6 Project drill-down screen data" })
-  projectDrillDown(@Query("projectId") projectId?: string) {
-    return this.service.projectDrillDown(projectId);
-  }
+  @Get("project-drilldown")
+@ApiOperation({ summary: "HTML 1.6 Project drill-down screen data" })
+@ApiQuery({
+  name: "category",
+  required: false,
+  enum: ["all", "its", "traffic", "its-maint", "traffic-maint"],
+})
+@ApiQuery({
+  name: "projectId",
+  required: false,
+})
+projectDrillDown(
+  @Query("category") category: ProjectDrillDownCategoryCode = "all",
+  @Query("projectId") projectId?: string,
+) {
+  return this.projectDrillDownService.getProjectDrillDown(
+    category,
+    projectId,
+  );
+}
 }

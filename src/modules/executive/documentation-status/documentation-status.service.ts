@@ -1,539 +1,193 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { Prisma, RecordStatus } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
 
-export type PortfolioCategoryCode =
-  | 'all'
-  | 'its'
-  | 'traffic'
-  | 'its-maint'
-  | 'traffic-maint';
+export type PortfolioCategoryCode = string;
+export type DocumentationStage = string;
+export type DocumentationStatusLabel = string;
 
-export type ActualPortfolioCategoryCode = Exclude<
-  PortfolioCategoryCode,
-  'all'
->;
+const documentInclude = {
+  project: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      clientName: true,
+      portfolio: true,
+      portfolioCategory: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+      projectManager: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  },
+  stage: {
+    select: {
+      code: true,
+      label: true,
+      displayOrder: true,
+    },
+  },
+  approvalStatus: {
+    select: {
+      code: true,
+      label: true,
+      severity: true,
+      displayOrder: true,
+    },
+  },
+} satisfies Prisma.PlanningDocumentInclude;
 
-export type DocumentationStage =
-  | 'pre-construction'
-  | 'design'
-  | 'procurement'
-  | 'construction'
-  | 'testing-commissioning'
-  | 'closeout';
-
-export type DocumentationStatusLabel =
-  | 'Approved'
-  | 'Under review'
-  | 'In preparation'
-  | 'Overdue'
-  | 'Rejected'
-  | 'At risk';
-
-interface DocumentationRecord {
-  id: string;
-  stage: DocumentationStage;
-  categoryCode: ActualPortfolioCategoryCode;
-  categoryName: string;
-  document: string;
-  project: string;
-  revision: string;
-  submitted: string;
-  approver: string;
-  status: DocumentationStatusLabel;
-  count: number;
-  overdueDays?: number;
-}
-
-const allowedCategories: PortfolioCategoryCode[] = [
-  'all',
-  'its',
-  'traffic',
-  'its-maint',
-  'traffic-maint',
-];
-
-const allowedStages: DocumentationStage[] = [
-  'pre-construction',
-  'design',
-  'procurement',
-  'construction',
-  'testing-commissioning',
-  'closeout',
-];
-
-const categoryLabels: Record<PortfolioCategoryCode, string> = {
-  all: 'All portfolios',
-  its: 'ITS Projects',
-  traffic: 'Traffic Projects',
-  'its-maint': 'ITS Maintenance',
-  'traffic-maint': 'Traffic Maintenance',
-};
-
-const stageLabels: Record<DocumentationStage, string> = {
-  'pre-construction': 'Pre-construction',
-  design: 'Design',
-  procurement: 'Procurement',
-  construction: 'Construction',
-  'testing-commissioning': 'Testing & commissioning',
-  closeout: 'Closeout',
-};
-
-const statusOrder: DocumentationStatusLabel[] = [
-  'Approved',
-  'Under review',
-  'In preparation',
-  'Overdue',
-  'At risk',
-  'Rejected',
-];
-
-const records: DocumentationRecord[] = [
-  {
-    id: 'pre-its-1',
-    stage: 'pre-construction',
-    categoryCode: 'its',
-    categoryName: 'ITS Projects',
-    document: 'Permit drawings set A',
-    project: 'Dubai ITS Corridor',
-    revision: 'R03',
-    submitted: '17 Mar',
-    approver: 'Authority',
-    status: 'Overdue',
-    count: 18,
-    overdueDays: 18,
-  },
-  {
-    id: 'pre-its-2',
-    stage: 'pre-construction',
-    categoryCode: 'its',
-    categoryName: 'ITS Projects',
-    document: 'Traffic diversion concept',
-    project: 'JLT Smart Parking',
-    revision: 'R01',
-    submitted: '28 Mar',
-    approver: 'Client',
-    status: 'Under review',
-    count: 12,
-  },
-  {
-    id: 'pre-traffic-1',
-    stage: 'pre-construction',
-    categoryCode: 'traffic',
-    categoryName: 'Traffic Projects',
-    document: 'NOC submission package',
-    project: 'Business Bay Signal Upgrade',
-    revision: 'R02',
-    submitted: '20 Mar',
-    approver: 'Authority',
-    status: 'At risk',
-    count: 15,
-    overdueDays: 9,
-  },
-  {
-    id: 'pre-traffic-2',
-    stage: 'pre-construction',
-    categoryCode: 'traffic',
-    categoryName: 'Traffic Projects',
-    document: 'Project execution plan',
-    project: 'Mirdif Junction Works',
-    revision: 'R02',
-    submitted: '1 Apr',
-    approver: 'Client',
-    status: 'Approved',
-    count: 21,
-  },
-  {
-    id: 'pre-its-maint-1',
-    stage: 'pre-construction',
-    categoryCode: 'its-maint',
-    categoryName: 'ITS Maintenance',
-    document: 'Maintenance readiness plan',
-    project: 'DAFZA ITS Maintenance',
-    revision: 'R01',
-    submitted: '24 Mar',
-    approver: 'Internal',
-    status: 'Under review',
-    count: 10,
-  },
-  {
-    id: 'pre-traffic-maint-1',
-    stage: 'pre-construction',
-    categoryCode: 'traffic-maint',
-    categoryName: 'Traffic Maintenance',
-    document: 'Signal maintenance method statement',
-    project: 'Al Barsha Signal Maintenance',
-    revision: 'R02',
-    submitted: '22 Mar',
-    approver: 'Consultant',
-    status: 'Overdue',
-    count: 11,
-    overdueDays: 14,
-  },
-
-  {
-    id: 'design-its-1',
-    stage: 'design',
-    categoryCode: 'its',
-    categoryName: 'ITS Projects',
-    document: 'ITS architecture drawings',
-    project: 'Dubai ITS Corridor',
-    revision: 'R04',
-    submitted: '12 Mar',
-    approver: 'Consultant',
-    status: 'Overdue',
-    count: 22,
-    overdueDays: 21,
-  },
-  {
-    id: 'design-traffic-1',
-    stage: 'design',
-    categoryCode: 'traffic',
-    categoryName: 'Traffic Projects',
-    document: 'Signal layout design',
-    project: 'Business Bay Signal Upgrade',
-    revision: 'R03',
-    submitted: '25 Mar',
-    approver: 'Client',
-    status: 'Under review',
-    count: 26,
-  },
-  {
-    id: 'design-its-maint-1',
-    stage: 'design',
-    categoryCode: 'its-maint',
-    categoryName: 'ITS Maintenance',
-    document: 'CCTV relocation design',
-    project: 'DIP CCTV Maintenance',
-    revision: 'R02',
-    submitted: '18 Mar',
-    approver: 'Consultant',
-    status: 'Approved',
-    count: 18,
-  },
-  {
-    id: 'design-traffic-maint-1',
-    stage: 'design',
-    categoryCode: 'traffic-maint',
-    categoryName: 'Traffic Maintenance',
-    document: 'Controller cabinet modification drawing',
-    project: 'Al Barsha Signal Maintenance',
-    revision: 'R01',
-    submitted: '29 Mar',
-    approver: 'Consultant',
-    status: 'At risk',
-    count: 14,
-    overdueDays: 8,
-  },
-
-  {
-    id: 'proc-its-1',
-    stage: 'procurement',
-    categoryCode: 'its',
-    categoryName: 'ITS Projects',
-    document: 'Camera technical submittal',
-    project: 'Dubai ITS Corridor',
-    revision: 'R02',
-    submitted: '20 Mar',
-    approver: 'Consultant',
-    status: 'Under review',
-    count: 16,
-  },
-  {
-    id: 'proc-traffic-1',
-    stage: 'procurement',
-    categoryCode: 'traffic',
-    categoryName: 'Traffic Projects',
-    document: 'Signal pole material approval',
-    project: 'Mirdif Junction Works',
-    revision: 'R01',
-    submitted: '23 Mar',
-    approver: 'Client',
-    status: 'Overdue',
-    count: 13,
-    overdueDays: 11,
-  },
-  {
-    id: 'proc-its-maint-1',
-    stage: 'procurement',
-    categoryCode: 'its-maint',
-    categoryName: 'ITS Maintenance',
-    document: 'Network switch compliance sheet',
-    project: 'DAFZA ITS Maintenance',
-    revision: 'R01',
-    submitted: '30 Mar',
-    approver: 'Consultant',
-    status: 'Approved',
-    count: 19,
-  },
-  {
-    id: 'proc-traffic-maint-1',
-    stage: 'procurement',
-    categoryCode: 'traffic-maint',
-    categoryName: 'Traffic Maintenance',
-    document: 'Spare signal heads vendor approval',
-    project: 'Deira Traffic Maintenance',
-    revision: 'R02',
-    submitted: '2 Apr',
-    approver: 'Internal',
-    status: 'In preparation',
-    count: 9,
-  },
-
-  {
-    id: 'con-its-1',
-    stage: 'construction',
-    categoryCode: 'its',
-    categoryName: 'ITS Projects',
-    document: 'Site inspection report',
-    project: 'JLT Smart Parking',
-    revision: 'R01',
-    submitted: '19 Mar',
-    approver: 'Consultant',
-    status: 'Overdue',
-    count: 17,
-    overdueDays: 15,
-  },
-  {
-    id: 'con-traffic-1',
-    stage: 'construction',
-    categoryCode: 'traffic',
-    categoryName: 'Traffic Projects',
-    document: 'Road marking inspection request',
-    project: 'Business Bay Signal Upgrade',
-    revision: 'R02',
-    submitted: '28 Mar',
-    approver: 'Consultant',
-    status: 'At risk',
-    count: 12,
-    overdueDays: 9,
-  },
-  {
-    id: 'con-its-maint-1',
-    stage: 'construction',
-    categoryCode: 'its-maint',
-    categoryName: 'ITS Maintenance',
-    document: 'Daily maintenance report',
-    project: 'DIP CCTV Maintenance',
-    revision: 'R01',
-    submitted: '3 Apr',
-    approver: 'Internal',
-    status: 'Approved',
-    count: 25,
-  },
-  {
-    id: 'con-traffic-maint-1',
-    stage: 'construction',
-    categoryCode: 'traffic-maint',
-    categoryName: 'Traffic Maintenance',
-    document: 'Work permit checklist',
-    project: 'Al Barsha Signal Maintenance',
-    revision: 'R01',
-    submitted: '4 Apr',
-    approver: 'Internal',
-    status: 'Under review',
-    count: 11,
-  },
-
-  {
-    id: 'tc-its-1',
-    stage: 'testing-commissioning',
-    categoryCode: 'its',
-    categoryName: 'ITS Projects',
-    document: 'FAT report',
-    project: 'Dubai ITS Corridor',
-    revision: 'R01',
-    submitted: '30 Mar',
-    approver: 'Consultant',
-    status: 'Under review',
-    count: 14,
-  },
-  {
-    id: 'tc-traffic-1',
-    stage: 'testing-commissioning',
-    categoryCode: 'traffic',
-    categoryName: 'Traffic Projects',
-    document: 'Signal testing procedure',
-    project: 'Mirdif Junction Works',
-    revision: 'R02',
-    submitted: '24 Mar',
-    approver: 'Consultant',
-    status: 'Overdue',
-    count: 10,
-    overdueDays: 10,
-  },
-  {
-    id: 'tc-its-maint-1',
-    stage: 'testing-commissioning',
-    categoryCode: 'its-maint',
-    categoryName: 'ITS Maintenance',
-    document: 'CCTV commissioning checklist',
-    project: 'DAFZA ITS Maintenance',
-    revision: 'R01',
-    submitted: '28 Mar',
-    approver: 'Client',
-    status: 'At risk',
-    count: 8,
-    overdueDays: 8,
-  },
-  {
-    id: 'tc-traffic-maint-1',
-    stage: 'testing-commissioning',
-    categoryCode: 'traffic-maint',
-    categoryName: 'Traffic Maintenance',
-    document: 'Controller loop test sheet',
-    project: 'Deira Traffic Maintenance',
-    revision: 'R02',
-    submitted: '21 Mar',
-    approver: 'Consultant',
-    status: 'Approved',
-    count: 13,
-  },
-
-  {
-    id: 'close-its-1',
-    stage: 'closeout',
-    categoryCode: 'its',
-    categoryName: 'ITS Projects',
-    document: 'As-built ITS drawings',
-    project: 'JLT Smart Parking',
-    revision: 'R04',
-    submitted: '23 Mar',
-    approver: 'Consultant',
-    status: 'Overdue',
-    count: 9,
-    overdueDays: 12,
-  },
-  {
-    id: 'close-traffic-1',
-    stage: 'closeout',
-    categoryCode: 'traffic',
-    categoryName: 'Traffic Projects',
-    document: 'Final completion certificate',
-    project: 'Business Bay Signal Upgrade',
-    revision: 'R01',
-    submitted: '2 Apr',
-    approver: 'Authority',
-    status: 'Under review',
-    count: 7,
-  },
-  {
-    id: 'close-its-maint-1',
-    stage: 'closeout',
-    categoryCode: 'its-maint',
-    categoryName: 'ITS Maintenance',
-    document: 'O&M manuals',
-    project: 'DIP CCTV Maintenance',
-    revision: 'R02',
-    submitted: '27 Mar',
-    approver: 'Client',
-    status: 'At risk',
-    count: 6,
-    overdueDays: 9,
-  },
-  {
-    id: 'close-traffic-maint-1',
-    stage: 'closeout',
-    categoryCode: 'traffic-maint',
-    categoryName: 'Traffic Maintenance',
-    document: 'Handover dossier',
-    project: 'Al Barsha Signal Maintenance',
-    revision: 'R02',
-    submitted: '19 Mar',
-    approver: 'Consultant',
-    status: 'Approved',
-    count: 16,
-  },
-];
+type PlanningDocumentRecord = Prisma.PlanningDocumentGetPayload<{
+  include: typeof documentInclude;
+}>;
 
 @Injectable()
 export class DocumentStatusService {
-  getDocumentStatus(
-    category: PortfolioCategoryCode = 'all',
-    stage: DocumentationStage = 'pre-construction',
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getDocumentStatus(
+    category: PortfolioCategoryCode = "all",
+    stage: DocumentationStage = "pre-construction",
   ) {
-    if (!allowedCategories.includes(category)) {
-      throw new BadRequestException('Invalid portfolio category');
-    }
+    const categoryLabel = await this.getCategoryLabel(category);
+    const selectedStage = await this.getStage(stage);
 
-    if (!allowedStages.includes(stage)) {
-      throw new BadRequestException('Invalid documentation stage');
-    }
+    const where = this.buildDocumentWhere(category, stage);
 
-    const filteredRecords = records.filter((record) => {
-      const matchesStage = record.stage === stage;
-
-      const matchesCategory =
-        category === 'all' || record.categoryCode === category;
-
-      return matchesStage && matchesCategory;
+    const documents = await this.prisma.planningDocument.findMany({
+      where,
+      include: documentInclude,
+      orderBy: [
+        {
+          dueDate: "asc",
+        },
+        {
+          uploadedAt: "desc",
+        },
+      ],
     });
 
-    const totalDocuments = this.sumCounts(filteredRecords);
+    const statuses = await this.prisma.documentApprovalStatusLookup.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        displayOrder: "asc",
+      },
+    });
 
-    const approved = this.sumStatusCounts(filteredRecords, ['Approved']);
+    const enrichedDocuments = documents.map((document) => {
+      const effectiveStatus = this.getEffectiveStatus(document);
+      const overdueDays = this.getOverdueDays(document, effectiveStatus.code);
 
-    const underReview = this.sumStatusCounts(filteredRecords, [
-      'Under review',
-      'At risk',
+      return {
+        document,
+        effectiveStatus,
+        statusLabel: effectiveStatus.label,
+        count: document.count ?? 1,
+        overdueDays,
+      };
+    });
+
+    const totalDocuments = enrichedDocuments.reduce(
+      (total, item) => total + item.count,
+      0,
+    );
+
+    const approved = this.sumStatusCounts(enrichedDocuments, ["approved"]);
+
+    const underReview = this.sumStatusCounts(enrichedDocuments, [
+      "under-review",
+      "at-risk",
     ]);
 
-    const overdue = this.sumStatusCounts(filteredRecords, ['Overdue']);
+    const overdue = this.sumStatusCounts(enrichedDocuments, ["overdue"]);
 
-    const inPreparation = this.sumStatusCounts(filteredRecords, [
-      'In preparation',
+    const inPreparation = this.sumStatusCounts(enrichedDocuments, [
+      "in-preparation",
     ]);
 
-    const rejected = this.sumStatusCounts(filteredRecords, ['Rejected']);
+    const rejected = this.sumStatusCounts(enrichedDocuments, ["rejected"]);
 
-    const atRisk = this.sumStatusCounts(filteredRecords, ['At risk']);
+    const atRisk = this.sumStatusCounts(enrichedDocuments, ["at-risk"]);
 
-    const statusSummary = statusOrder
+    const statusSummary = statuses
       .map((status) => {
-        const value = this.sumStatusCounts(filteredRecords, [status]);
+        const value = this.sumStatusCounts(enrichedDocuments, [status.code]);
 
         return {
-          label: status,
+          label: status.label,
           value,
           percent: this.getPercent(value, totalDocuments),
         };
       })
       .filter((item) => item.value > 0);
 
-    const overdueApprovals = filteredRecords
+    const overdueApprovals = enrichedDocuments
       .filter(
-        (record) => record.status === 'Overdue' || record.status === 'At risk',
+        (item) =>
+          item.effectiveStatus.code === "overdue" ||
+          item.effectiveStatus.code === "at-risk",
       )
       .sort((a, b) => (b.overdueDays ?? 0) - (a.overdueDays ?? 0))
       .slice(0, 4)
-      .map((record) => ({
-        id: record.id,
-        project: record.project,
-        document: record.document,
-        title: `${record.project} — ${record.document}`,
-        approver: record.approver,
-        status: record.status,
-        days: record.overdueDays ?? 0,
-        severity: record.status === 'Overdue' ? 'danger' : 'warning',
-      }));
+      .map((item) => {
+        const document = item.document;
 
-    const register = filteredRecords.map((record) => ({
-      id: record.id,
-      categoryCode: record.categoryCode,
-      categoryName: record.categoryName,
-      document: record.document,
-      project: record.project,
-      revision: record.revision,
-      submitted: record.submitted,
-      approver: record.approver,
-      status: record.status,
-      count: record.count,
-      overdueDays: record.overdueDays ?? null,
-    }));
+        return {
+          id: document.id,
+          project: document.project.name,
+          document: document.fileName,
+          title: `${document.project.name} — ${document.fileName}`,
+          approver: document.approver ?? "Unassigned",
+          status: item.effectiveStatus.label,
+          days: item.overdueDays ?? 0,
+          severity:
+            item.effectiveStatus.code === "overdue" ? "danger" : "warning",
+        };
+      });
+
+    const register = enrichedDocuments.map((item) => {
+      const document = item.document;
+
+      const categoryCode =
+        document.project.portfolioCategory?.code ?? document.project.portfolio;
+
+      const categoryName =
+        document.project.portfolioCategory?.name ?? document.project.portfolio;
+
+      return {
+        id: document.id,
+        categoryCode,
+        categoryName,
+        document: document.fileName,
+        project: document.project.name,
+        revision: document.revision,
+        submitted: this.formatShortDate(
+          document.submittedAt ?? document.uploadedAt,
+        ),
+        approver: document.approver ?? "Unassigned",
+        status: item.effectiveStatus.label,
+        count: item.count,
+        overdueDays: item.overdueDays,
+      };
+    });
 
     return {
       selectedCategory: category,
-      selectedCategoryLabel: categoryLabels[category],
+      selectedCategoryLabel: categoryLabel,
       selectedStage: stage,
-      selectedStageLabel: stageLabels[stage],
+      selectedStageLabel: selectedStage.label,
       kpis: {
         totalDocuments,
         approved,
@@ -549,16 +203,127 @@ export class DocumentStatusService {
     };
   }
 
-  private sumCounts(items: DocumentationRecord[]) {
-    return items.reduce((total, item) => total + item.count, 0);
+  private async getCategoryLabel(category: string) {
+    if (category === "all") return "All portfolios";
+
+    const found = await this.prisma.portfolioCategory.findFirst({
+      where: {
+        code: category,
+        isActive: true,
+      },
+      select: {
+        name: true,
+      },
+    });
+
+    if (!found) {
+      throw new BadRequestException("Invalid portfolio category");
+    }
+
+    return found.name;
+  }
+
+  private async getStage(stage: string) {
+    const found = await this.prisma.documentationStageLookup.findFirst({
+      where: {
+        code: stage,
+        isActive: true,
+      },
+      select: {
+        code: true,
+        label: true,
+      },
+    });
+
+    if (!found) {
+      throw new BadRequestException("Invalid documentation stage");
+    }
+
+    return found;
+  }
+
+  private buildDocumentWhere(
+    category: string,
+    stage: string,
+  ): Prisma.PlanningDocumentWhereInput {
+    return {
+      status: RecordStatus.ACTIVE,
+      stageCode: stage,
+      project: {
+        status: RecordStatus.ACTIVE,
+
+        ...(category !== "all"
+          ? {
+              OR: [
+                {
+                  portfolio: category,
+                },
+                {
+                  portfolioCategory: {
+                    code: category,
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+    };
+  }
+
+  private getEffectiveStatus(document: PlanningDocumentRecord) {
+    if (
+      document.approvalStatus.code === "approved" ||
+      document.approvalStatus.code === "rejected" ||
+      document.approvalStatus.code === "at-risk"
+    ) {
+      return document.approvalStatus;
+    }
+
+    if (document.approvalStatus.code === "overdue") {
+      return document.approvalStatus;
+    }
+
+    if (document.dueDate && document.dueDate.getTime() < Date.now()) {
+      return {
+        code: "overdue",
+        label: "Overdue",
+        severity: "danger",
+        displayOrder: 4,
+      };
+    }
+
+    return document.approvalStatus;
+  }
+
+  private getOverdueDays(
+    document: PlanningDocumentRecord,
+    statusCode: string,
+  ): number | null {
+    if (statusCode !== "overdue" && statusCode !== "at-risk") {
+      return null;
+    }
+
+    if (!document.dueDate) return 0;
+
+    const diffMs = Date.now() - document.dueDate.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    return Math.max(0, diffDays);
   }
 
   private sumStatusCounts(
-    items: DocumentationRecord[],
-    statuses: DocumentationStatusLabel[],
+    items: {
+      effectiveStatus: {
+        code: string;
+      };
+      count: number;
+    }[],
+    statusCodes: string[],
   ) {
     return items.reduce((total, item) => {
-      return statuses.includes(item.status) ? total + item.count : total;
+      return statusCodes.includes(item.effectiveStatus.code)
+        ? total + item.count
+        : total;
     }, 0);
   }
 
@@ -566,5 +331,14 @@ export class DocumentStatusService {
     if (total === 0) return 0;
 
     return Math.round((value / total) * 100);
+  }
+
+  private formatShortDate(value?: Date | null) {
+    if (!value) return "—";
+
+    return value.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+    });
   }
 }

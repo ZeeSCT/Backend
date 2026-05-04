@@ -1,43 +1,48 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { HealthStatus, Prisma, RecordStatus } from '@prisma/client';
-import { PrismaService } from '../../../common/prisma/prisma.service';
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { HealthStatus, Prisma, RecordStatus } from "@prisma/client";
+import { PrismaService } from "../../../common/prisma/prisma.service";
 
-const allowedCategories = [
-  'all',
-  'its',
-  'traffic',
-  'its-maint',
-  'traffic-maint',
-];
+type HealthLookupMap = Map<
+  string,
+  {
+    code: string;
+    label: string;
+    severity: string | null;
+    displayOrder: number;
+  }
+>;
 
-const healthLabels: Record<HealthStatus, string> = {
-  ON_TRACK: 'On track',
-  AT_RISK: 'At risk',
-  DELAYED: 'Delayed',
-  CRITICAL: 'Critical',
-};
+function fallbackLabel(code: string) {
+  return code
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 @Injectable()
 export class PortfolioOverviewService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getOverview(category = 'all') {
-    if (!allowedCategories.includes(category)) {
-      throw new BadRequestException('Invalid portfolio category');
-    }
+  async getOverview(category = "all") {
+    const selectedCategory = await this.normalizeCategory(category);
+    const selectedCategoryLabel =
+      await this.getCategoryLabel(selectedCategory);
+
+    const healthLookup = await this.getHealthLookupMap();
 
     const projectWhere: Prisma.ProjectWhereInput = {
       status: RecordStatus.ACTIVE,
 
-      ...(category !== 'all'
+      ...(selectedCategory !== "all"
         ? {
             OR: [
               {
-                portfolio: category,
+                portfolio: selectedCategory,
               },
               {
                 portfolioCategory: {
-                  code: category,
+                  code: selectedCategory,
                 },
               },
             ],
@@ -64,7 +69,7 @@ export class PortfolioOverviewService {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
 
@@ -143,8 +148,8 @@ export class PortfolioOverviewService {
       .filter((project) => project.topIssue)
       .sort((a, b) => {
         const priorityDiff =
-          this.getHealthPriority(a.healthStatus) -
-          this.getHealthPriority(b.healthStatus);
+          this.getHealthPriority(a.healthStatus, healthLookup) -
+          this.getHealthPriority(b.healthStatus, healthLookup);
 
         if (priorityDiff !== 0) {
           return priorityDiff;
@@ -157,11 +162,9 @@ export class PortfolioOverviewService {
         id: project.id,
         projectName: project.name,
         projectCode: project.code,
-        categoryCode:
-          project.portfolioCategory?.code ?? project.portfolio,
-        categoryName:
-          project.portfolioCategory?.name ?? project.portfolio,
-        health: healthLabels[project.healthStatus],
+        categoryCode: project.portfolioCategory?.code ?? project.portfolio,
+        categoryName: project.portfolioCategory?.name ?? project.portfolio,
+        health: this.getHealthLabel(project.healthStatus, healthLookup),
         healthStatus: project.healthStatus,
         issueTitle: project.topIssue,
         issueAgeDays: project.topIssueAgeDays,
@@ -172,16 +175,14 @@ export class PortfolioOverviewService {
       code: project.code,
       project: project.name,
       clientName: project.clientName,
-      categoryCode:
-        project.portfolioCategory?.code ?? project.portfolio,
-      categoryName:
-        project.portfolioCategory?.name ?? project.portfolio,
-      pm: project.projectManager?.name ?? 'Unassigned',
+      categoryCode: project.portfolioCategory?.code ?? project.portfolio,
+      categoryName: project.portfolioCategory?.name ?? project.portfolio,
+      pm: project.projectManager?.name ?? "Unassigned",
       pmEmail: project.projectManager?.email ?? null,
       completion: project.completionPct,
       plannedProgress: project.plannedProgress,
       actualProgress: project.actualProgress,
-      health: healthLabels[project.healthStatus],
+      health: this.getHealthLabel(project.healthStatus, healthLookup),
       healthStatus: project.healthStatus,
       delayedApprovals: project.delayedApprovals,
       blocked: project.blockedItems,
@@ -198,7 +199,8 @@ export class PortfolioOverviewService {
     }));
 
     return {
-      selectedCategory: category,
+      selectedCategory,
+      selectedCategoryLabel,
       kpis: {
         activeProjects,
         portfolioCompletion,
@@ -217,18 +219,103 @@ export class PortfolioOverviewService {
     };
   }
 
-  private getHealthPriority(healthStatus: HealthStatus) {
+  private async normalizeCategory(category?: string): Promise<string> {
+    const normalized = (category || "all").toLowerCase();
+
+    if (normalized === "all") {
+      return "all";
+    }
+
+    const exists = await this.prisma.portfolioCategory.findFirst({
+      where: {
+        code: normalized,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!exists) {
+      throw new BadRequestException("Invalid portfolio category");
+    }
+
+    return normalized;
+  }
+
+  private async getCategoryLabel(category: string): Promise<string> {
+    if (category === "all") {
+      return "All portfolios";
+    }
+
+    const found = await this.prisma.portfolioCategory.findFirst({
+      where: {
+        code: category,
+        isActive: true,
+      },
+      select: {
+        name: true,
+      },
+    });
+
+    if (!found) {
+      throw new BadRequestException("Invalid portfolio category");
+    }
+
+    return found.name;
+  }
+
+  private async getHealthLookupMap(): Promise<HealthLookupMap> {
+    const rows = await this.prisma.projectHealthStatusLookup.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        displayOrder: "asc",
+      },
+    });
+
+    return new Map(
+      rows.map((row) => [
+        row.code,
+        {
+          code: row.code,
+          label: row.label,
+          severity: row.severity,
+          displayOrder: row.displayOrder,
+        },
+      ]),
+    );
+  }
+
+  private getHealthLabel(
+    healthStatus: HealthStatus,
+    healthLookup: HealthLookupMap,
+  ) {
+    return healthLookup.get(healthStatus)?.label ?? fallbackLabel(healthStatus);
+  }
+
+  private getHealthPriority(
+    healthStatus: HealthStatus,
+    healthLookup: HealthLookupMap,
+  ) {
+    const lookup = healthLookup.get(healthStatus);
+
+    if (lookup) {
+      return -lookup.displayOrder;
+    }
+
     switch (healthStatus) {
       case HealthStatus.CRITICAL:
-        return 1;
+        return -4;
       case HealthStatus.DELAYED:
-        return 2;
+        return -3;
       case HealthStatus.AT_RISK:
-        return 3;
+        return -2;
       case HealthStatus.ON_TRACK:
-        return 4;
+        return -1;
       default:
-        return 5;
+        return 0;
     }
   }
 }

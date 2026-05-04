@@ -29,6 +29,7 @@ async function main() {
   /* ---------------------------------- */
   /* USERS */
   /* ---------------------------------- */
+
   const passwordHash = await bcrypt.hash(
     process.env.SEED_ADMIN_PASSWORD || "Admin@123",
     10,
@@ -195,6 +196,298 @@ async function main() {
 
   type CategoryCode = keyof typeof categoryMap;
 
+  type SeedDocumentInput = {
+    fileName: string;
+    revision: string;
+    planType?: string;
+    stageCode?: string;
+    approvalStatusCode?: string;
+    approver?: string;
+    submittedAt?: Date;
+    dueDate?: Date;
+    count?: number;
+    baselineStart?: Date;
+    baselineFinish?: Date;
+    forecastFinish?: Date;
+    uploadedBy?: string;
+  };
+
+  type SeedDocumentationStatusRecord = {
+    id: string;
+    stageCode: string;
+    categoryCode: CategoryCode;
+    document: string;
+    projectCode: string;
+    revision: string;
+    submittedAt: Date;
+    approver: string;
+    approvalStatusCode: string;
+    count: number;
+    overdueDays?: number;
+  };
+
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  function getDocumentationDueDate(record: SeedDocumentationStatusRecord) {
+    if (record.overdueDays && record.overdueDays > 0) {
+      return new Date(Date.now() - record.overdueDays * DAY_MS);
+    }
+
+    if (
+      record.approvalStatusCode === "approved" ||
+      record.approvalStatusCode === "rejected"
+    ) {
+      return record.submittedAt;
+    }
+
+    return new Date(Date.now() + 21 * DAY_MS);
+  }
+
+  /* ---------------------------------- */
+  /* LOOKUP TABLES */
+  /* ---------------------------------- */
+
+  async function seedLookupTables() {
+    const documentationStages = [
+      {
+        code: "pre-construction",
+        label: "Pre-construction",
+        displayOrder: 1,
+      },
+      {
+        code: "design",
+        label: "Design",
+        displayOrder: 2,
+      },
+      {
+        code: "procurement",
+        label: "Procurement",
+        displayOrder: 3,
+      },
+      {
+        code: "construction",
+        label: "Construction",
+        displayOrder: 4,
+      },
+      {
+        code: "testing-commissioning",
+        label: "Testing & commissioning",
+        displayOrder: 5,
+      },
+      {
+        code: "closeout",
+        label: "Closeout",
+        displayOrder: 6,
+      },
+    ];
+
+    for (const stage of documentationStages) {
+      await prisma.documentationStageLookup.upsert({
+        where: { code: stage.code },
+        update: {
+          label: stage.label,
+          displayOrder: stage.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: stage.code,
+          label: stage.label,
+          displayOrder: stage.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    const documentApprovalStatuses = [
+      {
+        code: "approved",
+        label: "Approved",
+        severity: "success",
+        displayOrder: 1,
+      },
+      {
+        code: "under-review",
+        label: "Under review",
+        severity: "info",
+        displayOrder: 2,
+      },
+      {
+        code: "in-preparation",
+        label: "In preparation",
+        severity: "neutral",
+        displayOrder: 3,
+      },
+      {
+        code: "overdue",
+        label: "Overdue",
+        severity: "danger",
+        displayOrder: 4,
+      },
+      {
+        code: "at-risk",
+        label: "At risk",
+        severity: "warning",
+        displayOrder: 5,
+      },
+      {
+        code: "rejected",
+        label: "Rejected",
+        severity: "danger",
+        displayOrder: 6,
+      },
+    ];
+
+    for (const status of documentApprovalStatuses) {
+      await prisma.documentApprovalStatusLookup.upsert({
+        where: { code: status.code },
+        update: {
+          label: status.label,
+          severity: status.severity,
+          displayOrder: status.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: status.code,
+          label: status.label,
+          severity: status.severity,
+          displayOrder: status.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    const projectHealthStatuses = [
+      {
+        code: "ON_TRACK",
+        label: "On track",
+        severity: "success",
+        displayOrder: 1,
+      },
+      {
+        code: "AT_RISK",
+        label: "At risk",
+        severity: "warning",
+        displayOrder: 2,
+      },
+      {
+        code: "DELAYED",
+        label: "Delayed",
+        severity: "warning",
+        displayOrder: 3,
+      },
+      {
+        code: "CRITICAL",
+        label: "Critical",
+        severity: "danger",
+        displayOrder: 4,
+      },
+    ];
+
+    for (const status of projectHealthStatuses) {
+      await prisma.projectHealthStatusLookup.upsert({
+        where: { code: status.code },
+        update: {
+          label: status.label,
+          severity: status.severity,
+          displayOrder: status.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: status.code,
+          label: status.label,
+          severity: status.severity,
+          displayOrder: status.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    const milestoneStatuses = [
+      {
+        code: "complete",
+        label: "Complete",
+        severity: "success",
+        displayOrder: 1,
+      },
+      {
+        code: "delayed",
+        label: "Delayed",
+        severity: "danger",
+        displayOrder: 2,
+      },
+      {
+        code: "at-risk",
+        label: "At risk",
+        severity: "warning",
+        displayOrder: 3,
+      },
+      {
+        code: "upcoming",
+        label: "Upcoming",
+        severity: "neutral",
+        displayOrder: 4,
+      },
+    ];
+
+    for (const status of milestoneStatuses) {
+      await prisma.milestoneStatusLookup.upsert({
+        where: { code: status.code },
+        update: {
+          label: status.label,
+          severity: status.severity,
+          displayOrder: status.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: status.code,
+          label: status.label,
+          severity: status.severity,
+          displayOrder: status.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    const activitySeverities = [
+      {
+        code: "success",
+        label: "Success",
+        displayOrder: 1,
+      },
+      {
+        code: "warning",
+        label: "Warning",
+        displayOrder: 2,
+      },
+      {
+        code: "danger",
+        label: "Danger",
+        displayOrder: 3,
+      },
+    ];
+
+    for (const severity of activitySeverities) {
+      await prisma.activitySeverityLookup.upsert({
+        where: { code: severity.code },
+        update: {
+          label: severity.label,
+          displayOrder: severity.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: severity.code,
+          label: severity.label,
+          displayOrder: severity.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    console.log("Lookup tables seeded.");
+  }
+
+  await seedLookupTables();
+
   /* ---------------------------------- */
   /* HELPER: SEED PROJECT */
   /* ---------------------------------- */
@@ -211,18 +504,13 @@ async function main() {
     actualProgress: number;
     healthStatus: HealthStatus;
     delayedApprovals?: number;
+    blockedItems?: number;
     billingReadyAmount?: number | null;
     plannedStart?: Date;
     plannedFinish?: Date;
     forecastFinish?: Date;
-    document?: {
-      fileName: string;
-      revision: string;
-      baselineStart?: Date;
-      baselineFinish?: Date;
-      forecastFinish?: Date;
-      uploadedBy?: string;
-    };
+    document?: SeedDocumentInput;
+    documents?: SeedDocumentInput[];
     activities?: {
       wbsCode?: string;
       activityId: string;
@@ -256,23 +544,17 @@ async function main() {
     const projectData = {
       name: input.name,
       clientName: input.clientName,
-
-      // Existing string field used by dropdown/API filters
       portfolio: category.code,
-
-      // New relation field
       portfolioCategoryId: category.id,
-
       projectManagerId: input.projectManagerId,
       contractValue: input.contractValue ?? null,
       completionPct: input.completionPct,
       plannedProgress: input.plannedProgress,
       actualProgress: input.actualProgress,
       healthStatus: input.healthStatus,
-
       delayedApprovals: input.delayedApprovals ?? 0,
+      blockedItems: input.blockedItems ?? 0,
       billingReadyAmount: input.billingReadyAmount ?? null,
-
       plannedStart: input.plannedStart ?? null,
       plannedFinish: input.plannedFinish ?? null,
       forecastFinish: input.forecastFinish ?? null,
@@ -288,41 +570,64 @@ async function main() {
       },
     });
 
-    let document: Awaited<
-      ReturnType<typeof prisma.planningDocument.create>
-    > | null = null;
+    let document: { id: string } | null = null;
 
-    if (input.document) {
+    async function upsertPlanningDocument(
+      projectId: string,
+      doc: SeedDocumentInput,
+    ) {
       const existingDocument = await prisma.planningDocument.findFirst({
         where: {
-          projectId: project.id,
-          fileName: input.document.fileName,
-          revision: input.document.revision,
+          projectId,
+          fileName: doc.fileName,
+          revision: doc.revision,
         },
       });
 
+      const documentData = {
+        planType: doc.planType ?? "BASELINE",
+        stageCode: doc.stageCode ?? "pre-construction",
+        approvalStatusCode: doc.approvalStatusCode ?? "in-preparation",
+        approver: doc.approver ?? null,
+        submittedAt: doc.submittedAt ?? null,
+        dueDate: doc.dueDate ?? null,
+        count: doc.count ?? 1,
+        baselineStart: doc.baselineStart ?? null,
+        baselineFinish: doc.baselineFinish ?? null,
+        forecastFinish: doc.forecastFinish ?? null,
+        status: RecordStatus.ACTIVE,
+        uploadedBy: doc.uploadedBy ?? admin.name,
+      };
+
       if (existingDocument) {
-        document = await prisma.planningDocument.update({
+        return prisma.planningDocument.update({
           where: { id: existingDocument.id },
-          data: {
-            baselineStart: input.document.baselineStart ?? null,
-            baselineFinish: input.document.baselineFinish ?? null,
-            forecastFinish: input.document.forecastFinish ?? null,
-            uploadedBy: input.document.uploadedBy ?? admin.name,
-          },
+          data: documentData,
         });
-      } else {
-        document = await prisma.planningDocument.create({
-          data: {
-            projectId: project.id,
-            fileName: input.document.fileName,
-            revision: input.document.revision,
-            baselineStart: input.document.baselineStart ?? null,
-            baselineFinish: input.document.baselineFinish ?? null,
-            forecastFinish: input.document.forecastFinish ?? null,
-            uploadedBy: input.document.uploadedBy ?? admin.name,
-          },
-        });
+      }
+
+      return prisma.planningDocument.create({
+        data: {
+          projectId,
+          fileName: doc.fileName,
+          revision: doc.revision,
+          ...documentData,
+        },
+      });
+    }
+
+    const documentInputs =
+      input.documents && input.documents.length > 0
+        ? input.documents
+        : input.document
+          ? [input.document]
+          : [];
+
+    for (const doc of documentInputs) {
+      const savedDocument = await upsertPlanningDocument(project.id, doc);
+
+      if (!document) {
+        document = savedDocument;
       }
     }
 
@@ -421,6 +726,396 @@ async function main() {
   }
 
   /* ---------------------------------- */
+  /* HELPER: SEED DOCUMENTATION STATUS */
+  /* ---------------------------------- */
+
+  async function seedDocumentationStatusRecords() {
+    const records: SeedDocumentationStatusRecord[] = [
+      {
+        id: "pre-its-1",
+        stageCode: "pre-construction",
+        categoryCode: "its",
+        document: "Permit drawings set A",
+        projectCode: "PRJ-001",
+        revision: "R03",
+        submittedAt: d("2026-03-17"),
+        approver: "Authority",
+        approvalStatusCode: "overdue",
+        count: 18,
+        overdueDays: 18,
+      },
+      {
+        id: "pre-its-2",
+        stageCode: "pre-construction",
+        categoryCode: "its",
+        document: "Traffic diversion concept",
+        projectCode: "PRJ-002",
+        revision: "R01",
+        submittedAt: d("2026-03-28"),
+        approver: "Client",
+        approvalStatusCode: "under-review",
+        count: 12,
+      },
+      {
+        id: "pre-traffic-1",
+        stageCode: "pre-construction",
+        categoryCode: "traffic",
+        document: "NOC submission package",
+        projectCode: "PRJ-003",
+        revision: "R02",
+        submittedAt: d("2026-03-20"),
+        approver: "Authority",
+        approvalStatusCode: "at-risk",
+        count: 15,
+        overdueDays: 9,
+      },
+      {
+        id: "pre-traffic-2",
+        stageCode: "pre-construction",
+        categoryCode: "traffic",
+        document: "Project execution plan",
+        projectCode: "PRJ-004",
+        revision: "R02",
+        submittedAt: d("2026-04-01"),
+        approver: "Client",
+        approvalStatusCode: "approved",
+        count: 21,
+      },
+      {
+        id: "pre-its-maint-1",
+        stageCode: "pre-construction",
+        categoryCode: "its-maint",
+        document: "Maintenance readiness plan",
+        projectCode: "PRJ-005",
+        revision: "R01",
+        submittedAt: d("2026-03-24"),
+        approver: "Internal",
+        approvalStatusCode: "under-review",
+        count: 10,
+      },
+      {
+        id: "pre-traffic-maint-1",
+        stageCode: "pre-construction",
+        categoryCode: "traffic-maint",
+        document: "Signal maintenance method statement",
+        projectCode: "PRJ-007",
+        revision: "R02",
+        submittedAt: d("2026-03-22"),
+        approver: "Consultant",
+        approvalStatusCode: "overdue",
+        count: 11,
+        overdueDays: 14,
+      },
+      {
+        id: "design-its-1",
+        stageCode: "design",
+        categoryCode: "its",
+        document: "ITS architecture drawings",
+        projectCode: "PRJ-001",
+        revision: "R04",
+        submittedAt: d("2026-03-12"),
+        approver: "Consultant",
+        approvalStatusCode: "overdue",
+        count: 22,
+        overdueDays: 21,
+      },
+      {
+        id: "design-traffic-1",
+        stageCode: "design",
+        categoryCode: "traffic",
+        document: "Signal layout design",
+        projectCode: "PRJ-003",
+        revision: "R03",
+        submittedAt: d("2026-03-25"),
+        approver: "Client",
+        approvalStatusCode: "under-review",
+        count: 26,
+      },
+      {
+        id: "design-its-maint-1",
+        stageCode: "design",
+        categoryCode: "its-maint",
+        document: "CCTV relocation design",
+        projectCode: "PRJ-005",
+        revision: "R02",
+        submittedAt: d("2026-03-18"),
+        approver: "Consultant",
+        approvalStatusCode: "approved",
+        count: 18,
+      },
+      {
+        id: "design-traffic-maint-1",
+        stageCode: "design",
+        categoryCode: "traffic-maint",
+        document: "Controller cabinet modification drawing",
+        projectCode: "PRJ-007",
+        revision: "R01",
+        submittedAt: d("2026-03-29"),
+        approver: "Consultant",
+        approvalStatusCode: "at-risk",
+        count: 14,
+        overdueDays: 8,
+      },
+      {
+        id: "proc-its-1",
+        stageCode: "procurement",
+        categoryCode: "its",
+        document: "Camera technical submittal",
+        projectCode: "PRJ-001",
+        revision: "R02",
+        submittedAt: d("2026-03-20"),
+        approver: "Consultant",
+        approvalStatusCode: "under-review",
+        count: 16,
+      },
+      {
+        id: "proc-traffic-1",
+        stageCode: "procurement",
+        categoryCode: "traffic",
+        document: "Signal pole material approval",
+        projectCode: "PRJ-004",
+        revision: "R01",
+        submittedAt: d("2026-03-23"),
+        approver: "Client",
+        approvalStatusCode: "overdue",
+        count: 13,
+        overdueDays: 11,
+      },
+      {
+        id: "proc-its-maint-1",
+        stageCode: "procurement",
+        categoryCode: "its-maint",
+        document: "Network switch compliance sheet",
+        projectCode: "PRJ-005",
+        revision: "R01",
+        submittedAt: d("2026-03-30"),
+        approver: "Consultant",
+        approvalStatusCode: "approved",
+        count: 19,
+      },
+      {
+        id: "proc-traffic-maint-1",
+        stageCode: "procurement",
+        categoryCode: "traffic-maint",
+        document: "Spare signal heads vendor approval",
+        projectCode: "PRJ-008",
+        revision: "R02",
+        submittedAt: d("2026-04-02"),
+        approver: "Internal",
+        approvalStatusCode: "in-preparation",
+        count: 9,
+      },
+      {
+        id: "con-its-1",
+        stageCode: "construction",
+        categoryCode: "its",
+        document: "Site inspection report",
+        projectCode: "PRJ-002",
+        revision: "R01",
+        submittedAt: d("2026-03-19"),
+        approver: "Consultant",
+        approvalStatusCode: "overdue",
+        count: 17,
+        overdueDays: 15,
+      },
+      {
+        id: "con-traffic-1",
+        stageCode: "construction",
+        categoryCode: "traffic",
+        document: "Road marking inspection request",
+        projectCode: "PRJ-003",
+        revision: "R02",
+        submittedAt: d("2026-03-28"),
+        approver: "Consultant",
+        approvalStatusCode: "at-risk",
+        count: 12,
+        overdueDays: 9,
+      },
+      {
+        id: "con-its-maint-1",
+        stageCode: "construction",
+        categoryCode: "its-maint",
+        document: "Daily maintenance report",
+        projectCode: "PRJ-006",
+        revision: "R01",
+        submittedAt: d("2026-04-03"),
+        approver: "Internal",
+        approvalStatusCode: "approved",
+        count: 25,
+      },
+      {
+        id: "con-traffic-maint-1",
+        stageCode: "construction",
+        categoryCode: "traffic-maint",
+        document: "Work permit checklist",
+        projectCode: "PRJ-007",
+        revision: "R01",
+        submittedAt: d("2026-04-04"),
+        approver: "Internal",
+        approvalStatusCode: "under-review",
+        count: 11,
+      },
+      {
+        id: "tc-its-1",
+        stageCode: "testing-commissioning",
+        categoryCode: "its",
+        document: "FAT report",
+        projectCode: "PRJ-001",
+        revision: "R01",
+        submittedAt: d("2026-03-30"),
+        approver: "Consultant",
+        approvalStatusCode: "under-review",
+        count: 14,
+      },
+      {
+        id: "tc-traffic-1",
+        stageCode: "testing-commissioning",
+        categoryCode: "traffic",
+        document: "Signal testing procedure",
+        projectCode: "PRJ-004",
+        revision: "R02",
+        submittedAt: d("2026-03-24"),
+        approver: "Consultant",
+        approvalStatusCode: "overdue",
+        count: 10,
+        overdueDays: 10,
+      },
+      {
+        id: "tc-its-maint-1",
+        stageCode: "testing-commissioning",
+        categoryCode: "its-maint",
+        document: "CCTV commissioning checklist",
+        projectCode: "PRJ-006",
+        revision: "R01",
+        submittedAt: d("2026-03-28"),
+        approver: "Client",
+        approvalStatusCode: "at-risk",
+        count: 8,
+        overdueDays: 8,
+      },
+      {
+        id: "tc-traffic-maint-1",
+        stageCode: "testing-commissioning",
+        categoryCode: "traffic-maint",
+        document: "Controller loop test sheet",
+        projectCode: "PRJ-008",
+        revision: "R02",
+        submittedAt: d("2026-03-21"),
+        approver: "Consultant",
+        approvalStatusCode: "approved",
+        count: 13,
+      },
+      {
+        id: "close-its-1",
+        stageCode: "closeout",
+        categoryCode: "its",
+        document: "As-built ITS drawings",
+        projectCode: "PRJ-002",
+        revision: "R04",
+        submittedAt: d("2026-03-23"),
+        approver: "Consultant",
+        approvalStatusCode: "overdue",
+        count: 9,
+        overdueDays: 12,
+      },
+      {
+        id: "close-traffic-1",
+        stageCode: "closeout",
+        categoryCode: "traffic",
+        document: "Final completion certificate",
+        projectCode: "PRJ-003",
+        revision: "R01",
+        submittedAt: d("2026-04-02"),
+        approver: "Authority",
+        approvalStatusCode: "under-review",
+        count: 7,
+      },
+      {
+        id: "close-its-maint-1",
+        stageCode: "closeout",
+        categoryCode: "its-maint",
+        document: "O&M manuals",
+        projectCode: "PRJ-006",
+        revision: "R02",
+        submittedAt: d("2026-03-27"),
+        approver: "Client",
+        approvalStatusCode: "at-risk",
+        count: 6,
+        overdueDays: 9,
+      },
+      {
+        id: "close-traffic-maint-1",
+        stageCode: "closeout",
+        categoryCode: "traffic-maint",
+        document: "Handover dossier",
+        projectCode: "PRJ-008",
+        revision: "R02",
+        submittedAt: d("2026-03-19"),
+        approver: "Consultant",
+        approvalStatusCode: "approved",
+        count: 16,
+      },
+    ];
+
+    for (const record of records) {
+      const project = await prisma.project.findUnique({
+        where: {
+          code: record.projectCode,
+        },
+      });
+
+      if (!project) {
+        throw new Error(
+          `Cannot seed documentation record ${record.id}: project ${record.projectCode} not found`,
+        );
+      }
+
+      const dueDate = getDocumentationDueDate(record);
+
+      const existingDocument = await prisma.planningDocument.findFirst({
+        where: {
+          projectId: project.id,
+          fileName: record.document,
+          revision: record.revision,
+          stageCode: record.stageCode,
+        },
+      });
+
+      const data = {
+        planType: record.stageCode,
+        stageCode: record.stageCode,
+        approvalStatusCode: record.approvalStatusCode,
+        approver: record.approver,
+        submittedAt: record.submittedAt,
+        dueDate,
+        count: record.count,
+        status: RecordStatus.ACTIVE,
+        uploadedBy: admin.name,
+      };
+
+      if (existingDocument) {
+        await prisma.planningDocument.update({
+          where: {
+            id: existingDocument.id,
+          },
+          data,
+        });
+      } else {
+        await prisma.planningDocument.create({
+          data: {
+            projectId: project.id,
+            fileName: record.document,
+            revision: record.revision,
+            ...data,
+          },
+        });
+      }
+    }
+
+    console.log("Documentation status records seeded.");
+  }
+
+  /* ---------------------------------- */
   /* PROJECTS: ITS PROJECTS */
   /* ---------------------------------- */
 
@@ -436,19 +1131,11 @@ async function main() {
     actualProgress: 42,
     healthStatus: HealthStatus.CRITICAL,
     delayedApprovals: 7,
+    blockedItems: 3,
     billingReadyAmount: 1800000,
-
     plannedStart: d("2025-01-05"),
     plannedFinish: d("2026-10-31"),
     forecastFinish: d("2026-11-18"),
-    document: {
-      fileName: "ITS2020-2A schedule rev 08.xlsx",
-      revision: "Rev.08",
-      baselineStart: d("2026-05-02"),
-      baselineFinish: d("2026-07-15"),
-      forecastFinish: d("2026-07-18"),
-      uploadedBy: admin.name,
-    },
     activities: [
       {
         wbsCode: "ITS.01.02",
@@ -526,8 +1213,8 @@ async function main() {
     actualProgress: 58,
     healthStatus: HealthStatus.DELAYED,
     delayedApprovals: 3,
+    blockedItems: 1,
     billingReadyAmount: 1100000,
-
     plannedStart: d("2025-04-01"),
     plannedFinish: d("2026-09-30"),
     forecastFinish: d("2026-10-20"),
@@ -559,8 +1246,8 @@ async function main() {
     actualProgress: 71,
     healthStatus: HealthStatus.AT_RISK,
     delayedApprovals: 2,
+    blockedItems: 0,
     billingReadyAmount: 2000000,
-
     plannedStart: d("2025-03-01"),
     plannedFinish: d("2026-06-30"),
     forecastFinish: d("2026-07-12"),
@@ -588,8 +1275,8 @@ async function main() {
     actualProgress: 83,
     healthStatus: HealthStatus.ON_TRACK,
     delayedApprovals: 1,
+    blockedItems: 3,
     billingReadyAmount: 1500000,
-
     plannedStart: d("2025-05-01"),
     plannedFinish: d("2026-08-15"),
     forecastFinish: d("2026-08-15"),
@@ -611,8 +1298,8 @@ async function main() {
     actualProgress: 89,
     healthStatus: HealthStatus.ON_TRACK,
     delayedApprovals: 0,
+    blockedItems: 1,
     billingReadyAmount: 1600000,
-
     plannedStart: d("2025-06-01"),
     plannedFinish: d("2026-05-31"),
     forecastFinish: d("2026-05-31"),
@@ -630,8 +1317,8 @@ async function main() {
     actualProgress: 67,
     healthStatus: HealthStatus.AT_RISK,
     delayedApprovals: 5,
+    blockedItems: 2,
     billingReadyAmount: 1000000,
-
     plannedStart: d("2025-07-01"),
     plannedFinish: d("2026-06-30"),
     forecastFinish: d("2026-07-08"),
@@ -663,8 +1350,8 @@ async function main() {
     actualProgress: 76,
     healthStatus: HealthStatus.ON_TRACK,
     delayedApprovals: 0,
+    blockedItems: 0,
     billingReadyAmount: 1100000,
-
     plannedStart: d("2025-02-15"),
     plannedFinish: d("2026-02-14"),
     forecastFinish: d("2026-02-20"),
@@ -682,8 +1369,8 @@ async function main() {
     actualProgress: 62,
     healthStatus: HealthStatus.DELAYED,
     delayedApprovals: 6,
+    blockedItems: 3,
     billingReadyAmount: 1800000,
-
     plannedStart: d("2025-04-15"),
     plannedFinish: d("2026-04-14"),
     forecastFinish: d("2026-05-04"),
@@ -698,6 +1385,8 @@ async function main() {
       },
     ],
   });
+
+  await seedDocumentationStatusRecords();
 
   console.log("Seed completed successfully.");
 }

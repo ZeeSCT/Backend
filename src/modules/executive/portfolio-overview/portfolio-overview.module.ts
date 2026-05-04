@@ -3,7 +3,6 @@ import { PortfolioOverviewController } from './portfolio-overview.controller';
 import { PortfolioOverviewService } from './portfolio-overview.service';
 
 @Module({
-  controllers: [PortfolioOverviewController],
   providers: [PortfolioOverviewService],
   exports: [PortfolioOverviewService],
 })

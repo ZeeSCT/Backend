@@ -1,11 +1,11 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
+
 enum UserRole {
   SUPER_ADMIN
   ADMIN
@@ -46,59 +46,62 @@ enum TenderStage {
   NO_BID
 }
 
+
+
 model User {
-  id              String    @id @default(cuid())
-  name            String
-  email           String    @unique
-  passwordHash    String
-  role            UserRole  @default(ENGINEER)
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(ENGINEER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   managedProjects Project[] @relation("ProjectManager")
 }
 
 model Project {
-  id               String       @id @default(cuid())
-  code             String       @unique
-  name             String
-  clientName       String
+  id         String @id @default(cuid())
+  code       String @unique
+  name       String
+  clientName String
 
   // Keep this for now because your existing data/API may already use it.
   // Store values like: its, traffic, its-maint, traffic-maint
-  portfolio        String
+  portfolio String
 
   // New proper relation to PortfolioCategory
   portfolioCategoryId String?
   portfolioCategory   PortfolioCategory? @relation(fields: [portfolioCategoryId], references: [id], onDelete: SetNull)
 
   projectManagerId String?
-  contractValue    Decimal?     @db.Decimal(18,2)
+  contractValue    Decimal? @db.Decimal(18, 2)
 
-  completionPct    Int          @default(0)
-  plannedProgress  Int          @default(0)
-  actualProgress   Int          @default(0)
-  healthStatus     HealthStatus @default(ON_TRACK)
+  completionPct   Int          @default(0)
+  plannedProgress Int          @default(0)
+  actualProgress  Int          @default(0)
+  healthStatus    HealthStatus @default(ON_TRACK)
 
   // Dashboard fields for portfolio overview
-  delayedApprovals  Int      @default(0)
-  blockedItems      Int      @default(0)
-  billingReadyAmount Decimal? @db.Decimal(18,2)
-  topIssue          String?
-  topIssueAgeDays   Int?
+  delayedApprovals   Int      @default(0)
+  blockedItems       Int      @default(0)
+  billingReadyAmount Decimal? @db.Decimal(18, 2)
+  topIssue           String?
+  topIssueAgeDays    Int?
 
-  plannedStart     DateTime?
-  plannedFinish    DateTime?
-  forecastFinish   DateTime?
-  status           RecordStatus @default(ACTIVE)
+  plannedStart   DateTime?
+  plannedFinish  DateTime?
+  forecastFinish DateTime?
+  status         RecordStatus @default(ACTIVE)
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  projectManager   User? @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  projectManager User? @relation("ProjectManager", fields: [projectManagerId], references: [id])
 
   tenders          Tender[]
+  documents        PlanningDocument[]
   activities       PlanningActivity[]
   milestones       PlanningMilestone[]
   resources        PlanningResource[]
@@ -115,65 +118,168 @@ model Project {
 }
 
 model PortfolioCategory {
-  id           String   @id @default(uuid())
-  code         String   @unique
-  name         String   @unique
+  id           String  @id @default(uuid())
+  code         String  @unique
+  name         String  @unique
   description  String?
-  isActive     Boolean  @default(true)
-  displayOrder Int      @default(0)
+  isActive     Boolean @default(true)
+  displayOrder Int     @default(0)
 
-  projects     Project[]
+  projects Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model DocumentationStageLookup {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  label        String
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  documents PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model DocumentApprovalStatusLookup {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  label        String
+  displayOrder Int     @default(0)
+  severity     String?
+  isActive     Boolean @default(true)
+
+  documents PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model ProjectHealthStatusLookup {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  label        String
+  severity     String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([code])
   @@index([isActive])
+  @@index([displayOrder])
+}
+
+model MilestoneStatusLookup {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  label        String
+  severity     String?
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model ActivitySeverityLookup {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  label        String
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
 }
 
 model Tender {
-  id                 String   @id @default(cuid())
-  refNo              String   @unique
+  id                 String       @id @default(cuid())
+  refNo              String       @unique
   title              String
   clientName         String
   source             String?
-  estimatedValue     Decimal? @db.Decimal(18,2)
-  bidValue           Decimal? @db.Decimal(18,2)
-  stage              TenderStage @default(ENQUIRY)
+  estimatedValue     Decimal?     @db.Decimal(18, 2)
+  bidValue           Decimal?     @db.Decimal(18, 2)
+  stage              TenderStage  @default(ENQUIRY)
   submissionDeadline DateTime?
   projectId          String?
   owner              String?
   riskScore          Int?
-  marginPct          Decimal? @db.Decimal(5,2)
+  marginPct          Decimal?     @db.Decimal(5, 2)
   status             RecordStatus @default(ACTIVE)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   project Project? @relation(fields: [projectId], references: [id])
 }
 
 model PlanningDocument {
-  id             String   @id @default(cuid())
-  projectId      String
-  fileName       String
-  revision       String
-  planType       String   @default("BASELINE")
+  id        String @id @default(cuid())
+  projectId String
+  fileName  String
+  revision  String
+  planType  String @default("BASELINE")
+
+  stageCode          String @default("pre-construction")
+  approvalStatusCode String @default("in-preparation")
+
+  approver    String?
+  submittedAt DateTime?
+  dueDate     DateTime?
+  count       Int       @default(1)
+
   baselineStart  DateTime?
   baselineFinish DateTime?
   forecastFinish DateTime?
   status         RecordStatus @default(ACTIVE)
-  uploadedBy     String?
-  uploadedAt     DateTime @default(now())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+
+  uploadedBy String?
+  uploadedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  stage          DocumentationStageLookup     @relation(fields: [stageCode], references: [code])
+  approvalStatus DocumentApprovalStatusLookup @relation(fields: [approvalStatusCode], references: [code])
 
   activities PlanningActivity[]
   milestones PlanningMilestone[]
   resources  PlanningResource[]
+
+  @@index([projectId])
+  @@index([stageCode])
+  @@index([approvalStatusCode])
+  @@index([status])
+  @@index([dueDate])
 }
 
 model PlanningActivity {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   projectId       String
   documentId      String?
   wbsCode         String?
@@ -187,14 +293,14 @@ model PlanningActivity {
   actualStart     DateTime?
   actualFinish    DateTime?
   floatDays       Int?
-  percentComplete Int      @default(0)
+  percentComplete Int          @default(0)
   owner           String?
-  isCritical      Boolean  @default(false)
+  isCritical      Boolean      @default(false)
   healthStatus    HealthStatus @default(ON_TRACK)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, activityId])
@@ -204,41 +310,41 @@ model PlanningActivity {
 }
 
 model PlanningMilestone {
-  id            String   @id @default(cuid())
-  projectId     String
-  documentId    String?
-  milestoneCode String?
-  milestoneName String
-  baselineDate  DateTime?
-  forecastDate  DateTime?
-  actualDate    DateTime?
-  delayDays     Int      @default(0)
+  id             String       @id @default(cuid())
+  projectId      String
+  documentId     String?
+  milestoneCode  String?
+  milestoneName  String
+  baselineDate   DateTime?
+  forecastDate   DateTime?
+  actualDate     DateTime?
+  delayDays      Int          @default(0)
   linkedActivity String?
-  healthStatus  HealthStatus @default(ON_TRACK)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  healthStatus   HealthStatus @default(ON_TRACK)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
 }
 
 model PlanningResource {
-  id            String   @id @default(cuid())
-  projectId     String
-  documentId    String?
-  activityId    String?
-  resourceRole  String
-  resourceName  String?
-  plannedQty    Int      @default(0)
-  availableQty  Int      @default(0)
-  requiredDate  DateTime?
-  healthStatus  HealthStatus @default(ON_TRACK)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String       @id @default(cuid())
+  projectId    String
+  documentId   String?
+  activityId   String?
+  resourceRole String
+  resourceName String?
+  plannedQty   Int          @default(0)
+  availableQty Int          @default(0)
+  requiredDate DateTime?
+  healthStatus HealthStatus @default(ON_TRACK)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
@@ -246,25 +352,25 @@ model PlanningResource {
 }
 
 model Inspection {
-  id            String   @id @default(cuid())
-  refNo         String   @unique
-  projectId     String
-  activity      String
+  id             String       @id @default(cuid())
+  refNo          String       @unique
+  projectId      String
+  activity       String
   inspectionType String?
-  inspectorName String?
-  scheduledAt   DateTime?
-  outcome       String?
-  healthStatus  HealthStatus @default(ON_TRACK)
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  inspectorName  String?
+  scheduledAt    DateTime?
+  outcome        String?
+  healthStatus   HealthStatus @default(ON_TRACK)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Ncr {
-  id           String   @id @default(cuid())
-  refNo        String   @unique
+  id           String       @id @default(cuid())
+  refNo        String       @unique
   projectId    String
   description  String
   packageName  String?
@@ -272,54 +378,54 @@ model Ncr {
   severity     String?
   healthStatus HealthStatus @default(AT_RISK)
   dateRaised   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model MaterialRequest {
-  id            String   @id @default(cuid())
-  refNo         String   @unique
-  projectId     String
-  materialName  String
-  quantity      String?
-  requestedBy   String?
-  priority      String?
-  healthStatus  HealthStatus @default(ON_TRACK)
-  requestDate   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String       @id @default(cuid())
+  refNo        String       @unique
+  projectId    String
+  materialName String
+  quantity     String?
+  requestedBy  String?
+  priority     String?
+  healthStatus HealthStatus @default(ON_TRACK)
+  requestDate  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model PurchaseOrder {
-  id               String   @id @default(cuid())
-  refNo            String   @unique
+  id               String       @id @default(cuid())
+  refNo            String       @unique
   projectId        String
   vendorName       String
   materialName     String
-  amount           Decimal? @db.Decimal(18,2)
+  amount           Decimal?     @db.Decimal(18, 2)
   issuedAt         DateTime?
   expectedDelivery DateTime?
   healthStatus     HealthStatus @default(ON_TRACK)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Asset {
-  id           String   @id @default(cuid())
-  assetCode    String   @unique
+  id           String       @id @default(cuid())
+  assetCode    String       @unique
   projectId    String
   name         String
   assetType    String
   location     String?
   healthStatus HealthStatus @default(ON_TRACK)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
