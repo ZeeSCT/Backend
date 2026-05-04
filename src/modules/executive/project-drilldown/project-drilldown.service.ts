@@ -3,85 +3,84 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma, RecordStatus } from "@prisma/client";
+import { HealthStatus, Prisma, RecordStatus } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
 
-export type PortfolioCategoryCode =
-  | "all"
-  | "its"
-  | "traffic"
-  | "its-maint"
-  | "traffic-maint";
+export type PortfolioCategoryCode = string;
+export type ProjectHealthStatus = string;
+export type ProjectHealthLabel = string;
+export type ProjectActivitySeverity = string;
+export type ProjectMilestoneStatus = string;
 
-export type ProjectHealthStatus =
-  | "ON_TRACK"
-  | "AT_RISK"
-  | "DELAYED"
-  | "CRITICAL";
+type HealthLookupMap = Map<
+  string,
+  {
+    code: string;
+    label: string;
+    severity: string | null;
+    displayOrder: number;
+  }
+>;
 
-export type ProjectHealthLabel =
-  | "On track"
-  | "At risk"
-  | "Delayed"
-  | "Critical";
+type MilestoneLookupMap = Map<
+  string,
+  {
+    code: string;
+    label: string;
+    severity: string | null;
+    displayOrder: number;
+  }
+>;
 
-export type ProjectActivitySeverity = "success" | "warning" | "danger";
+type ActivitySeverityLookupMap = Map<
+  string,
+  {
+    code: string;
+    label: string;
+    displayOrder: number;
+  }
+>;
 
-export type ProjectMilestoneStatus =
-  | "Complete"
-  | "Delayed"
-  | "At risk"
-  | "Upcoming";
-
-interface ProjectRecord {
-  id: string;
-  code?: string | null;
-  name: string;
-  clientName?: string | null;
-  portfolio?: string | null;
-  healthStatus?: ProjectHealthStatus | null;
-  completionPct?: unknown;
-  plannedProgress?: unknown;
-  actualProgress?: unknown;
-  delayedApprovals?: number | null;
-  blockedItems?: number | null;
-  billingReadyAmount?: unknown;
-  startDate?: Date | string | null;
-  endDate?: Date | string | null;
-  plannedStartDate?: Date | string | null;
-  plannedEndDate?: Date | string | null;
-  forecastFinish?: Date | string | null;
-  createdAt?: Date | string | null;
-  projectManager?: {
-    name?: string | null;
-    email?: string | null;
-  } | null;
-  projectManagerName?: string | null;
-  pm?: string | null;
+function fallbackLabel(code: string) {
+  return code
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-const allowedCategories: PortfolioCategoryCode[] = [
-  "all",
-  "its",
-  "traffic",
-  "its-maint",
-  "traffic-maint",
-];
+const projectInclude = {
+  projectManager: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  portfolioCategory: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+    },
+  },
+  activities: {
+    orderBy: [{ isCritical: "desc" }, { plannedFinish: "asc" }],
+    take: 20,
+  },
+  milestones: {
+    orderBy: [{ baselineDate: "asc" }, { createdAt: "asc" }],
+    take: 20,
+  },
+  ncrs: {
+    orderBy: [{ createdAt: "desc" }],
+    take: 10,
+  },
+} satisfies Prisma.ProjectInclude;
 
-const categoryLabels: Record<PortfolioCategoryCode, string> = {
-  all: "All portfolios",
-  its: "ITS Projects",
-  traffic: "Traffic Projects",
-  "its-maint": "ITS Maintenance",
-  "traffic-maint": "Traffic Maintenance",
-};
-
-const healthLabels: Record<ProjectHealthStatus, ProjectHealthLabel> = {
-  ON_TRACK: "On track",
-  AT_RISK: "At risk",
-  DELAYED: "Delayed",
-  CRITICAL: "Critical",
-};
+type ProjectRecord = Prisma.ProjectGetPayload<{
+  include: typeof projectInclude;
+}>;
 
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number") return value;
@@ -120,25 +119,37 @@ function toIsoDate(value?: Date | string | null): string | null {
   return date.toISOString();
 }
 
+function slug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
 @Injectable()
 export class ProjectDrillDownService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getProjectDrillDown(category: string = "all", projectId?: string) {
-    const selectedCategory = this.normalizeCategory(category);
+    const selectedCategory = await this.normalizeCategory(category);
+    const selectedCategoryLabel = await this.getCategoryLabel(selectedCategory);
+
+    const healthLookup = await this.getHealthLookupMap();
+    const milestoneLookup = await this.getMilestoneLookupMap();
+    const activitySeverityLookup = await this.getActivitySeverityLookupMap();
+
     const projectWhere = this.buildProjectWhere(selectedCategory);
 
-    const projects = (await this.prisma.project.findMany({
+    const projects = await this.prisma.project.findMany({
       where: projectWhere,
-      include: {
-        projectManager: true,
-      },
+      include: projectInclude,
       orderBy: [{ code: "asc" }, { name: "asc" }],
-    })) as unknown as ProjectRecord[];
+    });
 
     if (projects.length === 0) {
       return {
         selectedCategory,
+        selectedCategoryLabel,
         selectedProjectId: null,
         projects: [],
         project: null,
@@ -146,14 +157,12 @@ export class ProjectDrillDownService {
     }
 
     const selectedProject = projectId
-      ? ((await this.prisma.project.findFirst({
+      ? await this.prisma.project.findFirst({
           where: {
             AND: [projectWhere, { id: projectId }],
           },
-          include: {
-            projectManager: true,
-          },
-        })) as unknown as ProjectRecord | null)
+          include: projectInclude,
+        })
       : projects[0];
 
     if (!selectedProject) {
@@ -162,27 +171,67 @@ export class ProjectDrillDownService {
 
     return {
       selectedCategory,
+      selectedCategoryLabel,
       selectedProjectId: selectedProject.id,
-      projects: projects.map((project) => this.toProjectOption(project)),
-      project: this.toProjectSummary(selectedProject),
+      projects: projects.map((project) =>
+        this.toProjectOption(project, healthLookup),
+      ),
+      project: this.toProjectSummary(
+        selectedProject,
+        healthLookup,
+        milestoneLookup,
+        activitySeverityLookup,
+      ),
     };
   }
 
-  private normalizeCategory(category?: string): PortfolioCategoryCode {
-    const normalized = (
-      category || "all"
-    ).toLowerCase() as PortfolioCategoryCode;
+  private async normalizeCategory(category?: string): Promise<string> {
+    const normalized = (category || "all").toLowerCase();
 
-    if (!allowedCategories.includes(normalized)) {
+    if (normalized === "all") {
+      return "all";
+    }
+
+    const exists = await this.prisma.portfolioCategory.findFirst({
+      where: {
+        code: normalized,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!exists) {
       throw new BadRequestException("Invalid portfolio category");
     }
 
     return normalized;
   }
 
-  private buildProjectWhere(
-    category: PortfolioCategoryCode,
-  ): Prisma.ProjectWhereInput {
+  private async getCategoryLabel(category: string): Promise<string> {
+    if (category === "all") {
+      return "All portfolios";
+    }
+
+    const found = await this.prisma.portfolioCategory.findFirst({
+      where: {
+        code: category,
+        isActive: true,
+      },
+      select: {
+        name: true,
+      },
+    });
+
+    if (!found) {
+      throw new BadRequestException("Invalid portfolio category");
+    }
+
+    return found.name;
+  }
+
+  private buildProjectWhere(category: string): Prisma.ProjectWhereInput {
     return {
       status: RecordStatus.ACTIVE,
 
@@ -203,30 +252,178 @@ export class ProjectDrillDownService {
     };
   }
 
-  private toProjectOption(project: ProjectRecord) {
-    const healthStatus = this.getHealthStatus(project);
+  private async getHealthLookupMap(): Promise<HealthLookupMap> {
+    const rows = await this.prisma.projectHealthStatusLookup.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        displayOrder: "asc",
+      },
+    });
+
+    return new Map(
+      rows.map((row) => [
+        row.code,
+        {
+          code: row.code,
+          label: row.label,
+          severity: row.severity,
+          displayOrder: row.displayOrder,
+        },
+      ]),
+    );
+  }
+
+  private async getMilestoneLookupMap(): Promise<MilestoneLookupMap> {
+    const rows = await this.prisma.milestoneStatusLookup.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        displayOrder: "asc",
+      },
+    });
+
+    return new Map(
+      rows.map((row) => [
+        row.code,
+        {
+          code: row.code,
+          label: row.label,
+          severity: row.severity,
+          displayOrder: row.displayOrder,
+        },
+      ]),
+    );
+  }
+
+  private async getActivitySeverityLookupMap(): Promise<ActivitySeverityLookupMap> {
+    const rows = await this.prisma.activitySeverityLookup.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        displayOrder: "asc",
+      },
+    });
+
+    return new Map(
+      rows.map((row) => [
+        row.code,
+        {
+          code: row.code,
+          label: row.label,
+          displayOrder: row.displayOrder,
+        },
+      ]),
+    );
+  }
+
+  private getHealthLabel(
+    status: string,
+    healthLookup: HealthLookupMap,
+  ): string {
+    return healthLookup.get(status)?.label ?? fallbackLabel(status);
+  }
+
+  private getHealthPriority(
+    status: string,
+    healthLookup?: HealthLookupMap,
+  ): number {
+    const fromDb = healthLookup?.get(status)?.displayOrder;
+
+    if (typeof fromDb === "number") {
+      return fromDb;
+    }
+
+    switch (status) {
+      case "CRITICAL":
+        return 1;
+      case "DELAYED":
+        return 2;
+      case "AT_RISK":
+        return 3;
+      case "ON_TRACK":
+      default:
+        return 4;
+    }
+  }
+
+  private getActivitySeverityFromHealth(
+    status: string,
+    healthLookup: HealthLookupMap,
+    activitySeverityLookup: ActivitySeverityLookupMap,
+  ): ProjectActivitySeverity {
+    const severity = healthLookup.get(status)?.severity;
+
+    if (
+      severity &&
+      activitySeverityLookup.has(severity) &&
+      (severity === "danger" ||
+        severity === "warning" ||
+        severity === "success")
+    ) {
+      return severity;
+    }
+
+    if (status === "CRITICAL" || status === "DELAYED") {
+      return activitySeverityLookup.has("danger") ? "danger" : "danger";
+    }
+
+    if (status === "AT_RISK") {
+      return activitySeverityLookup.has("warning") ? "warning" : "warning";
+    }
+
+    return activitySeverityLookup.has("success") ? "success" : "success";
+  }
+
+  private getMilestoneLabel(
+    code: string,
+    milestoneLookup: MilestoneLookupMap,
+  ): string {
+    return milestoneLookup.get(code)?.label ?? fallbackLabel(code);
+  }
+
+  private toProjectOption(
+    project: ProjectRecord,
+    healthLookup: HealthLookupMap,
+  ) {
+    const healthStatus = this.getHealthStatus(project.healthStatus);
 
     return {
       id: project.id,
-      code: project.code ?? "",
+      code: project.code,
       name: project.name,
-      clientName: project.clientName ?? null,
-      projectManager: this.getProjectManagerName(project),
-      health: healthLabels[healthStatus],
+      clientName: project.clientName,
+      categoryCode: project.portfolioCategory?.code ?? project.portfolio,
+      categoryName: project.portfolioCategory?.name ?? project.portfolio,
+      projectManager: project.projectManager?.name ?? null,
+      health: this.getHealthLabel(healthStatus, healthLookup),
       healthStatus,
     };
   }
 
-  private toProjectSummary(project: ProjectRecord) {
-    const healthStatus = this.getHealthStatus(project);
+  private toProjectSummary(
+    project: ProjectRecord,
+    healthLookup: HealthLookupMap,
+    milestoneLookup: MilestoneLookupMap,
+    activitySeverityLookup: ActivitySeverityLookupMap,
+  ) {
+    const healthStatus = this.getHealthStatus(project.healthStatus);
+
     const completion = clampPercent(
       toNumber(project.completionPct ?? project.actualProgress, 0),
     );
+
     const plannedProgress = clampPercent(toNumber(project.plannedProgress, 0));
     const scheduleVariance = completion - plannedProgress;
 
-    const blockedPackages = Math.max(0, Number(project.blockedItems ?? 0));
+    const packages = this.buildPackages(project, healthLookup);
+
     const overdueApprovals = Math.max(0, Number(project.delayedApprovals ?? 0));
+
+    const blockedPackages = Math.max(0, Number(project.blockedItems ?? 0));
 
     const pendingApprovals =
       overdueApprovals +
@@ -238,17 +435,20 @@ export class ProjectDrillDownService {
             ? 2
             : 1);
 
-    const packages = this.buildPackages(project);
-
     return {
       id: project.id,
-      code: project.code ?? "",
+      code: project.code,
       name: project.name,
-      clientName: project.clientName ?? null,
-      projectManager: this.getProjectManagerName(project),
-      startDate: toIsoDate(project.plannedStartDate ?? project.createdAt),
-      endDate: toIsoDate(project.forecastFinish ?? project.plannedEndDate),
-      health: healthLabels[healthStatus],
+      clientName: project.clientName,
+      categoryCode: project.portfolioCategory?.code ?? project.portfolio,
+      categoryName: project.portfolioCategory?.name ?? project.portfolio,
+      projectManager: project.projectManager?.name ?? null,
+      projectManagerEmail: project.projectManager?.email ?? null,
+
+      startDate: toIsoDate(project.plannedStart),
+      endDate: toIsoDate(project.forecastFinish ?? project.plannedFinish),
+
+      health: this.getHealthLabel(healthStatus, healthLookup),
       healthStatus,
 
       kpis: {
@@ -256,26 +456,36 @@ export class ProjectDrillDownService {
         plannedProgress,
         scheduleVariance,
         blockedPackages,
-        totalPackages: Math.max(packages.length, 8),
+        totalPackages: Math.max(packages.length, 1),
         pendingApprovals,
         overdueApprovals,
-        openNcrs: this.deriveOpenNcrs(healthStatus),
+        openNcrs:
+          project.ncrs.length > 0
+            ? project.ncrs.length
+            : this.deriveOpenNcrs(healthStatus),
       },
 
       packages,
-      activities: this.buildActivities(project, scheduleVariance),
-      milestones: this.buildMilestones(project, scheduleVariance),
+      activities: this.buildActivities(
+        project,
+        scheduleVariance,
+        healthLookup,
+        activitySeverityLookup,
+      ),
+      milestones: this.buildMilestones(
+        project,
+        scheduleVariance,
+        milestoneLookup,
+      ),
     };
   }
 
-  private getHealthStatus(project: ProjectRecord): ProjectHealthStatus {
-    const value = project.healthStatus;
-
+  private getHealthStatus(value?: HealthStatus | null): ProjectHealthStatus {
     if (
-      value === "ON_TRACK" ||
-      value === "AT_RISK" ||
-      value === "DELAYED" ||
-      value === "CRITICAL"
+      value === HealthStatus.ON_TRACK ||
+      value === HealthStatus.AT_RISK ||
+      value === HealthStatus.DELAYED ||
+      value === HealthStatus.CRITICAL
     ) {
       return value;
     }
@@ -283,20 +493,69 @@ export class ProjectDrillDownService {
     return "ON_TRACK";
   }
 
-  private getProjectManagerName(project: ProjectRecord): string | null {
-    return (
-      project.projectManager?.name ??
-      project.projectManagerName ??
-      project.pm ??
-      null
-    );
+  private buildPackages(
+    project: ProjectRecord,
+    healthLookup: HealthLookupMap,
+  ) {
+    if (project.activities.length > 0) {
+      const grouped = new Map<
+        string,
+        {
+          name: string;
+          totalCompletion: number;
+          count: number;
+          healthStatuses: ProjectHealthStatus[];
+        }
+      >();
+
+      for (const activity of project.activities) {
+        const packageName =
+          activity.discipline ||
+          activity.wbsCode?.split(".")[0] ||
+          "General works";
+
+        const existing = grouped.get(packageName) ?? {
+          name: packageName,
+          totalCompletion: 0,
+          count: 0,
+          healthStatuses: [],
+        };
+
+        existing.totalCompletion += activity.percentComplete;
+        existing.count += 1;
+        existing.healthStatuses.push(
+          this.getHealthStatus(activity.healthStatus),
+        );
+
+        grouped.set(packageName, existing);
+      }
+
+      return Array.from(grouped.values()).map((group) => {
+        const status = group.healthStatuses.sort(
+          (a, b) =>
+            this.getHealthPriority(a, healthLookup) -
+            this.getHealthPriority(b, healthLookup),
+        )[0];
+
+        return {
+          id: `${project.id}-package-${slug(group.name)}`,
+          name: group.name,
+          status,
+          completion: clampPercent(group.totalCompletion / group.count),
+        };
+      });
+    }
+
+    return this.buildFallbackPackages(project);
   }
 
-  private buildPackages(project: ProjectRecord) {
-    const healthStatus = this.getHealthStatus(project);
+  private buildFallbackPackages(project: ProjectRecord) {
+    const healthStatus = this.getHealthStatus(project.healthStatus);
+
     const completion = clampPercent(
       toNumber(project.completionPct ?? project.actualProgress, 0),
     );
+
     const blockedItems = Math.max(0, Number(project.blockedItems ?? 0));
 
     const basePackages = [
@@ -331,10 +590,13 @@ export class ProjectDrillDownService {
     });
   }
 
-  private buildActivities(project: ProjectRecord, scheduleVariance: number) {
-    const healthStatus = this.getHealthStatus(project);
-    const delayedApprovals = Number(project.delayedApprovals ?? 0);
-    const blockedItems = Number(project.blockedItems ?? 0);
+  private buildActivities(
+    project: ProjectRecord,
+    scheduleVariance: number,
+    healthLookup: HealthLookupMap,
+    activitySeverityLookup: ActivitySeverityLookupMap,
+  ) {
+    const healthStatus = this.getHealthStatus(project.healthStatus);
 
     const activities: {
       id: string;
@@ -343,23 +605,94 @@ export class ProjectDrillDownService {
       severity: ProjectActivitySeverity;
     }[] = [];
 
-    if (delayedApprovals > 0) {
+    for (const ncr of project.ncrs.slice(0, 2)) {
+      const ncrStatus = this.getHealthStatus(ncr.healthStatus);
+
       activities.push({
-        id: `${project.id}-approval-delay`,
-        title: `Approval pending for ${delayedApprovals} item${
-          delayedApprovals === 1 ? "" : "s"
-        }`,
-        description: "Client or consultant response required",
-        severity: "danger",
+        id: `${project.id}-ncr-${ncr.id}`,
+        title: `${ncr.refNo} — ${ncr.description}`,
+        description: ncr.packageName
+          ? `${ncr.packageName} package NCR`
+          : "Open NCR",
+        severity: this.getActivitySeverityFromHealth(
+          ncrStatus,
+          healthLookup,
+          activitySeverityLookup,
+        ),
       });
     }
 
-    if (blockedItems > 0) {
+    const delayedMilestones = project.milestones
+      .filter(
+        (milestone) =>
+          milestone.delayDays > 0 ||
+          milestone.healthStatus === HealthStatus.DELAYED ||
+          milestone.healthStatus === HealthStatus.CRITICAL,
+      )
+      .slice(0, 2);
+
+    for (const milestone of delayedMilestones) {
+      const milestoneHealth = this.getHealthStatus(milestone.healthStatus);
+
+      activities.push({
+        id: `${project.id}-milestone-${milestone.id}`,
+        title: `${milestone.milestoneName} delayed`,
+        description: `${milestone.delayDays} day variance against baseline`,
+        severity: this.getActivitySeverityFromHealth(
+          milestoneHealth,
+          healthLookup,
+          activitySeverityLookup,
+        ),
+      });
+    }
+
+    const criticalActivities = project.activities
+      .filter(
+        (activity) =>
+          activity.isCritical ||
+          activity.healthStatus === HealthStatus.CRITICAL ||
+          activity.healthStatus === HealthStatus.DELAYED,
+      )
+      .slice(0, 2);
+
+    for (const activity of criticalActivities) {
+      const activityHealth = this.getHealthStatus(activity.healthStatus);
+
+      activities.push({
+        id: `${project.id}-activity-${activity.id}`,
+        title: activity.activityName,
+        description: activity.owner
+          ? `Owner: ${activity.owner}`
+          : activity.discipline
+            ? `Discipline: ${activity.discipline}`
+            : "Critical planning activity",
+        severity: this.getActivitySeverityFromHealth(
+          activityHealth,
+          healthLookup,
+          activitySeverityLookup,
+        ),
+      });
+    }
+
+    if (project.delayedApprovals > 0) {
+      activities.push({
+        id: `${project.id}-approval-delay`,
+        title: `Approval pending for ${project.delayedApprovals} item${
+          project.delayedApprovals === 1 ? "" : "s"
+        }`,
+        description: "Client or consultant response required",
+        severity: activitySeverityLookup.has("danger") ? "danger" : "danger",
+      });
+    }
+
+    if (project.blockedItems > 0) {
       activities.push({
         id: `${project.id}-blocked-items`,
-        title: `${blockedItems} package${blockedItems === 1 ? "" : "s"} blocked`,
+        title: `${project.blockedItems} package${
+          project.blockedItems === 1 ? "" : "s"
+        } blocked`,
         description: "Action required from project team",
-        severity: "danger",
+        severity: activitySeverityLookup.has("danger") ? "danger" : "danger",
       });
     }
 
@@ -368,84 +701,134 @@ export class ProjectDrillDownService {
         id: `${project.id}-schedule-slippage`,
         title: "Schedule variance exceeds threshold",
         description: `${Math.abs(scheduleVariance)}% behind planned progress`,
-        severity: "warning",
+        severity: activitySeverityLookup.has("warning")
+          ? "warning"
+          : "warning",
       });
     }
 
-    if (healthStatus === "ON_TRACK") {
+    if (activities.length === 0 || healthStatus === "ON_TRACK") {
       activities.push({
         id: `${project.id}-progress-update`,
         title: "Progress is tracking against plan",
         description: "No critical blocker reported",
-        severity: "success",
+        severity: activitySeverityLookup.has("success")
+          ? "success"
+          : "success",
       });
     }
-
-    activities.push({
-      id: `${project.id}-weekly-update`,
-      title: "Weekly project summary updated",
-      description: "Dashboard values refreshed from project records",
-      severity: healthStatus === "ON_TRACK" ? "success" : "warning",
-    });
 
     return activities.slice(0, 4);
   }
 
-  private buildMilestones(project: ProjectRecord, scheduleVariance: number) {
-    const healthStatus = this.getHealthStatus(project);
+  private buildMilestones(
+    project: ProjectRecord,
+    scheduleVariance: number,
+    milestoneLookup: MilestoneLookupMap,
+  ) {
+    if (project.milestones.length > 0) {
+      return project.milestones.map((milestone) => {
+        const statusCode = this.getMilestoneStatusCode(
+          milestone.actualDate,
+          milestone.delayDays,
+          milestone.healthStatus,
+        );
 
+        return {
+          id: milestone.id,
+          name: milestone.milestoneName,
+          plannedDate: toIsoDate(milestone.baselineDate) ?? "TBD",
+          forecastDate:
+            toIsoDate(milestone.actualDate) ??
+            toIsoDate(milestone.forecastDate),
+          varianceDays: milestone.delayDays ?? null,
+          status: this.getMilestoneLabel(statusCode, milestoneLookup),
+        };
+      });
+    }
+
+    const healthStatus = this.getHealthStatus(project.healthStatus);
     const isCritical = healthStatus === "CRITICAL";
     const isAtRisk = healthStatus === "AT_RISK" || healthStatus === "DELAYED";
 
     return [
       {
-        id: `${project.id}-foundation`,
-        name: "Foundation complete",
-        plannedDate: "2026-03-15",
-        forecastDate: isCritical ? "2026-03-28" : "2026-03-15",
-        varianceDays: isCritical ? 13 : 0,
-        status: isCritical ? "Delayed" : "Complete",
+        id: `${project.id}-project-start`,
+        name: "Project start",
+        plannedDate: toIsoDate(project.plannedStart) ?? "TBD",
+        forecastDate: toIsoDate(project.plannedStart),
+        varianceDays: 0,
+        status: this.getMilestoneLabel("complete", milestoneLookup),
       },
       {
-        id: `${project.id}-structure`,
-        name: "Structural frame L1-5",
-        plannedDate: "2026-04-10",
-        forecastDate: isCritical || isAtRisk ? "2026-04-25" : "2026-04-10",
-        varianceDays: isCritical || isAtRisk ? 15 : 0,
-        status: isCritical || isAtRisk ? "At risk" : "Complete",
-      },
-      {
-        id: `${project.id}-hvac-main-duct`,
-        name: "HVAC main duct",
+        id: `${project.id}-progress-checkpoint`,
+        name: "Progress checkpoint",
         plannedDate: "2026-04-30",
         forecastDate: scheduleVariance < -10 ? "2026-05-20" : "2026-04-30",
         varianceDays: scheduleVariance < -10 ? 20 : 0,
-        status: scheduleVariance < -10 ? "At risk" : "Upcoming",
-      },
-      {
-        id: `${project.id}-electrical-first-fix`,
-        name: "Electrical 1st fix",
-        plannedDate: "2026-05-15",
-        forecastDate: null,
-        varianceDays: null,
-        status: "Upcoming",
+        status: this.getMilestoneLabel(
+          isCritical ? "delayed" : isAtRisk ? "at-risk" : "upcoming",
+          milestoneLookup,
+        ),
       },
       {
         id: `${project.id}-practical-completion`,
         name: "Practical completion",
-        plannedDate: "2026-10-31",
-        forecastDate: null,
-        varianceDays: null,
-        status: "Upcoming",
+        plannedDate: toIsoDate(project.plannedFinish) ?? "TBD",
+        forecastDate: toIsoDate(project.forecastFinish),
+        varianceDays: this.getDateVarianceDays(
+          project.plannedFinish,
+          project.forecastFinish,
+        ),
+        status: this.getMilestoneLabel(
+          isCritical || scheduleVariance < -10 ? "at-risk" : "upcoming",
+          milestoneLookup,
+        ),
       },
-    ] satisfies {
-      id: string;
-      name: string;
-      plannedDate: string;
-      forecastDate: string | null;
-      varianceDays: number | null;
-      status: ProjectMilestoneStatus;
-    }[];
+    ];
+  }
+
+  private getMilestoneStatusCode(
+    actualDate: Date | null,
+    delayDays: number,
+    healthStatus: HealthStatus,
+  ): string {
+    if (actualDate) return "complete";
+
+    if (
+      delayDays > 0 &&
+      (healthStatus === HealthStatus.CRITICAL ||
+        healthStatus === HealthStatus.DELAYED)
+    ) {
+      return "delayed";
+    }
+
+    if (delayDays > 0 || healthStatus === HealthStatus.AT_RISK) {
+      return "at-risk";
+    }
+
+    return "upcoming";
+  }
+
+  private getDateVarianceDays(
+    planned?: Date | string | null,
+    forecast?: Date | string | null,
+  ): number | null {
+    if (!planned || !forecast) return null;
+
+    const plannedDate = planned instanceof Date ? planned : new Date(planned);
+    const forecastDate =
+      forecast instanceof Date ? forecast : new Date(forecast);
+
+    if (
+      Number.isNaN(plannedDate.getTime()) ||
+      Number.isNaN(forecastDate.getTime())
+    ) {
+      return null;
+    }
+
+    const diffMs = forecastDate.getTime() - plannedDate.getTime();
+    return Math.round(diffMs / (1000 * 60 * 60 * 24));
   }
 
   private deriveOpenNcrs(healthStatus: ProjectHealthStatus): number {
@@ -458,7 +841,7 @@ export class ProjectDrillDownService {
         return 2;
       case "ON_TRACK":
       default:
-        return 1;
+        return 0;
     }
   }
 }
