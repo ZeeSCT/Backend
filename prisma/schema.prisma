@@ -46,23 +46,7 @@ enum TenderStage {
   NO_BID
 }
 
-// enum DocumentationStage {
-//   PRE_CONSTRUCTION
-//   DESIGN
-//   PROCUREMENT
-//   CONSTRUCTION
-//   TESTING_COMMISSIONING
-//   CLOSEOUT
-// }
 
-// enum DocumentApprovalStatus {
-//   APPROVED
-//   UNDER_REVIEW
-//   IN_PREPARATION
-//   OVERDUE
-//   REJECTED
-//   AT_RISK
-// }
 
 model User {
   id           String   @id @default(cuid())
