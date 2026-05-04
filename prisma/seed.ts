@@ -29,6 +29,7 @@ async function main() {
   /* ---------------------------------- */
   /* USERS */
   /* ---------------------------------- */
+
   const passwordHash = await bcrypt.hash(
     process.env.SEED_ADMIN_PASSWORD || "Admin@123",
     10,
@@ -60,7 +61,7 @@ async function main() {
     create: {
       name: "A. Karim",
       email: "pm@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -76,7 +77,7 @@ async function main() {
     create: {
       name: "N. Rashid",
       email: "pm2@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -92,7 +93,7 @@ async function main() {
     create: {
       name: "S. Mehta",
       email: "pm3@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -108,7 +109,7 @@ async function main() {
     create: {
       name: "F. Al Hamad",
       email: "pm4@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -120,12 +121,7 @@ async function main() {
 
   const itsCategory = await prisma.portfolioCategory.upsert({
     where: { code: "its" },
-    update: {
-      name: "ITS Projects",
-      description: "Intelligent Transport Systems projects",
-      isActive: true,
-      displayOrder: 1,
-    },
+    update: {},
     create: {
       code: "its",
       name: "ITS Projects",
@@ -137,12 +133,7 @@ async function main() {
 
   const trafficCategory = await prisma.portfolioCategory.upsert({
     where: { code: "traffic" },
-    update: {
-      name: "Traffic Projects",
-      description: "Traffic infrastructure projects",
-      isActive: true,
-      displayOrder: 2,
-    },
+    update: {},
     create: {
       code: "traffic",
       name: "Traffic Projects",
@@ -154,12 +145,7 @@ async function main() {
 
   const itsMaintenanceCategory = await prisma.portfolioCategory.upsert({
     where: { code: "its-maint" },
-    update: {
-      name: "ITS Maintenance",
-      description: "ITS maintenance works",
-      isActive: true,
-      displayOrder: 3,
-    },
+    update: {},
     create: {
       code: "its-maint",
       name: "ITS Maintenance",
@@ -171,12 +157,7 @@ async function main() {
 
   const trafficMaintenanceCategory = await prisma.portfolioCategory.upsert({
     where: { code: "traffic-maint" },
-    update: {
-      name: "Traffic Maintenance",
-      description: "Traffic maintenance works",
-      isActive: true,
-      displayOrder: 4,
-    },
+    update: {},
     create: {
       code: "traffic-maint",
       name: "Traffic Maintenance",
@@ -196,7 +177,7 @@ async function main() {
   type CategoryCode = keyof typeof categoryMap;
 
   /* ---------------------------------- */
-  /* HELPER: SEED PROJECT */
+  /* HELPER */
   /* ---------------------------------- */
 
   async function seedProject(input: {
@@ -211,35 +192,14 @@ async function main() {
     actualProgress: number;
     healthStatus: HealthStatus;
     delayedApprovals?: number;
+    blockedItems?: number;
     billingReadyAmount?: number | null;
+    topIssue?: string | null;
+    topIssueAgeDays?: number | null;
     plannedStart?: Date;
     plannedFinish?: Date;
     forecastFinish?: Date;
-    document?: {
-      fileName: string;
-      revision: string;
-      baselineStart?: Date;
-      baselineFinish?: Date;
-      forecastFinish?: Date;
-      uploadedBy?: string;
-    };
-    activities?: {
-      wbsCode?: string;
-      activityId: string;
-      activityName: string;
-      discipline?: string;
-      location?: string;
-      durationDays?: number;
-      plannedStart?: Date;
-      plannedFinish?: Date;
-      actualStart?: Date;
-      actualFinish?: Date;
-      floatDays?: number;
-      percentComplete?: number;
-      owner?: string;
-      isCritical?: boolean;
-      healthStatus?: HealthStatus;
-    }[];
+
     milestones?: {
       milestoneCode?: string;
       milestoneName: string;
@@ -253,164 +213,89 @@ async function main() {
   }) {
     const category = categoryMap[input.categoryCode];
 
-    const projectData = {
-      name: input.name,
-      clientName: input.clientName,
-
-      // Existing string field used by dropdown/API filters
-      portfolio: category.code,
-
-      // New relation field
-      portfolioCategoryId: category.id,
-
-      projectManagerId: input.projectManagerId,
-      contractValue: input.contractValue ?? null,
-      completionPct: input.completionPct,
-      plannedProgress: input.plannedProgress,
-      actualProgress: input.actualProgress,
-      healthStatus: input.healthStatus,
-
-      delayedApprovals: input.delayedApprovals ?? 0,
-      billingReadyAmount: input.billingReadyAmount ?? null,
-
-      plannedStart: input.plannedStart ?? null,
-      plannedFinish: input.plannedFinish ?? null,
-      forecastFinish: input.forecastFinish ?? null,
-      status: RecordStatus.ACTIVE,
-    };
-
     const project = await prisma.project.upsert({
       where: { code: input.code },
-      update: projectData,
+      update: {
+        name: input.name,
+        clientName: input.clientName,
+        portfolio: category.code,
+        portfolioCategoryId: category.id,
+        projectManagerId: input.projectManagerId,
+        contractValue: input.contractValue ?? null,
+        completionPct: input.completionPct,
+        plannedProgress: input.plannedProgress,
+        actualProgress: input.actualProgress,
+        healthStatus: input.healthStatus,
+        delayedApprovals: input.delayedApprovals ?? 0,
+        blockedItems: input.blockedItems ?? 0,
+        billingReadyAmount: input.billingReadyAmount ?? null,
+        topIssue: input.topIssue ?? null,
+        topIssueAgeDays: input.topIssueAgeDays ?? null,
+        plannedStart: input.plannedStart ?? null,
+        plannedFinish: input.plannedFinish ?? null,
+        forecastFinish: input.forecastFinish ?? null,
+        status: RecordStatus.ACTIVE,
+      },
       create: {
         code: input.code,
-        ...projectData,
+        name: input.name,
+        clientName: input.clientName,
+        portfolio: category.code,
+        portfolioCategoryId: category.id,
+        projectManagerId: input.projectManagerId,
+        contractValue: input.contractValue ?? null,
+        completionPct: input.completionPct,
+        plannedProgress: input.plannedProgress,
+        actualProgress: input.actualProgress,
+        healthStatus: input.healthStatus,
+        delayedApprovals: input.delayedApprovals ?? 0,
+        blockedItems: input.blockedItems ?? 0,
+        billingReadyAmount: input.billingReadyAmount ?? null,
+        topIssue: input.topIssue ?? null,
+        topIssueAgeDays: input.topIssueAgeDays ?? null,
+        plannedStart: input.plannedStart ?? null,
+        plannedFinish: input.plannedFinish ?? null,
+        forecastFinish: input.forecastFinish ?? null,
+        status: RecordStatus.ACTIVE,
       },
     });
 
-    let document: Awaited<
-      ReturnType<typeof prisma.planningDocument.create>
-    > | null = null;
-
-    if (input.document) {
-      const existingDocument = await prisma.planningDocument.findFirst({
-        where: {
-          projectId: project.id,
-          fileName: input.document.fileName,
-          revision: input.document.revision,
-        },
-      });
-
-      if (existingDocument) {
-        document = await prisma.planningDocument.update({
-          where: { id: existingDocument.id },
-          data: {
-            baselineStart: input.document.baselineStart ?? null,
-            baselineFinish: input.document.baselineFinish ?? null,
-            forecastFinish: input.document.forecastFinish ?? null,
-            uploadedBy: input.document.uploadedBy ?? admin.name,
-          },
-        });
-      } else {
-        document = await prisma.planningDocument.create({
-          data: {
-            projectId: project.id,
-            fileName: input.document.fileName,
-            revision: input.document.revision,
-            baselineStart: input.document.baselineStart ?? null,
-            baselineFinish: input.document.baselineFinish ?? null,
-            forecastFinish: input.document.forecastFinish ?? null,
-            uploadedBy: input.document.uploadedBy ?? admin.name,
-          },
-        });
-      }
-    }
-
-    if (input.activities?.length) {
-      for (const activity of input.activities) {
-        await prisma.planningActivity.upsert({
-          where: {
-            projectId_activityId: {
-              projectId: project.id,
-              activityId: activity.activityId,
-            },
-          },
-          update: {
-            documentId: document?.id ?? null,
-            wbsCode: activity.wbsCode ?? null,
-            activityName: activity.activityName,
-            discipline: activity.discipline ?? null,
-            location: activity.location ?? null,
-            durationDays: activity.durationDays ?? null,
-            plannedStart: activity.plannedStart ?? null,
-            plannedFinish: activity.plannedFinish ?? null,
-            actualStart: activity.actualStart ?? null,
-            actualFinish: activity.actualFinish ?? null,
-            floatDays: activity.floatDays ?? null,
-            percentComplete: activity.percentComplete ?? 0,
-            owner: activity.owner ?? null,
-            isCritical: activity.isCritical ?? false,
-            healthStatus: activity.healthStatus ?? HealthStatus.ON_TRACK,
-          },
-          create: {
-            projectId: project.id,
-            documentId: document?.id ?? null,
-            wbsCode: activity.wbsCode ?? null,
-            activityId: activity.activityId,
-            activityName: activity.activityName,
-            discipline: activity.discipline ?? null,
-            location: activity.location ?? null,
-            durationDays: activity.durationDays ?? null,
-            plannedStart: activity.plannedStart ?? null,
-            plannedFinish: activity.plannedFinish ?? null,
-            actualStart: activity.actualStart ?? null,
-            actualFinish: activity.actualFinish ?? null,
-            floatDays: activity.floatDays ?? null,
-            percentComplete: activity.percentComplete ?? 0,
-            owner: activity.owner ?? null,
-            isCritical: activity.isCritical ?? false,
-            healthStatus: activity.healthStatus ?? HealthStatus.ON_TRACK,
-          },
-        });
-      }
-    }
-
     if (input.milestones?.length) {
       for (const milestone of input.milestones) {
-        const existingMilestone = await prisma.planningMilestone.findFirst({
+        const existing = await prisma.planningMilestone.findFirst({
           where: {
             projectId: project.id,
-            milestoneCode: milestone.milestoneCode ?? null,
             milestoneName: milestone.milestoneName,
           },
         });
 
-        if (existingMilestone) {
+        if (existing) {
           await prisma.planningMilestone.update({
-            where: { id: existingMilestone.id },
+            where: { id: existing.id },
             data: {
-              documentId: document?.id ?? null,
-              baselineDate: milestone.baselineDate ?? null,
-              forecastDate: milestone.forecastDate ?? null,
-              actualDate: milestone.actualDate ?? null,
+              milestoneCode: milestone.milestoneCode,
+              baselineDate: milestone.baselineDate,
+              forecastDate: milestone.forecastDate,
+              actualDate: milestone.actualDate,
               delayDays: milestone.delayDays ?? 0,
-              linkedActivity: milestone.linkedActivity ?? null,
-              healthStatus: milestone.healthStatus ?? HealthStatus.ON_TRACK,
+              linkedActivity: milestone.linkedActivity,
+              healthStatus:
+                milestone.healthStatus ?? HealthStatus.ON_TRACK,
             },
           });
         } else {
           await prisma.planningMilestone.create({
             data: {
               projectId: project.id,
-              documentId: document?.id ?? null,
-              milestoneCode: milestone.milestoneCode ?? null,
+              milestoneCode: milestone.milestoneCode,
               milestoneName: milestone.milestoneName,
-              baselineDate: milestone.baselineDate ?? null,
-              forecastDate: milestone.forecastDate ?? null,
-              actualDate: milestone.actualDate ?? null,
+              baselineDate: milestone.baselineDate,
+              forecastDate: milestone.forecastDate,
+              actualDate: milestone.actualDate,
               delayDays: milestone.delayDays ?? 0,
-              linkedActivity: milestone.linkedActivity ?? null,
-              healthStatus: milestone.healthStatus ?? HealthStatus.ON_TRACK,
+              linkedActivity: milestone.linkedActivity,
+              healthStatus:
+                milestone.healthStatus ?? HealthStatus.ON_TRACK,
             },
           });
         }
@@ -421,7 +306,7 @@ async function main() {
   }
 
   /* ---------------------------------- */
-  /* PROJECTS: ITS PROJECTS */
+  /* CRITICAL PROJECTS */
   /* ---------------------------------- */
 
   await seedProject({
@@ -436,83 +321,54 @@ async function main() {
     actualProgress: 42,
     healthStatus: HealthStatus.CRITICAL,
     delayedApprovals: 7,
+    blockedItems: 4,
     billingReadyAmount: 1800000,
+    topIssue: "Authority approvals pending",
+    topIssueAgeDays: 22,
 
     plannedStart: d("2025-01-05"),
     plannedFinish: d("2026-10-31"),
     forecastFinish: d("2026-11-18"),
-    document: {
-      fileName: "ITS2020-2A schedule rev 08.xlsx",
-      revision: "Rev.08",
-      baselineStart: d("2026-05-02"),
-      baselineFinish: d("2026-07-15"),
-      forecastFinish: d("2026-07-18"),
-      uploadedBy: admin.name,
-    },
-    activities: [
-      {
-        wbsCode: "ITS.01.02",
-        activityId: "A1020",
-        activityName: "Traffic signal controller installation",
-        discipline: "ITS",
-        durationDays: 12,
-        plannedStart: d("2026-05-02"),
-        plannedFinish: d("2026-05-14"),
-        floatDays: 0,
-        percentComplete: 42,
-        owner: "ITS Engineer",
-        isCritical: true,
-        healthStatus: HealthStatus.CRITICAL,
-      },
-      {
-        wbsCode: "ITS.01.03",
-        activityId: "A1045",
-        activityName: "Fiber backbone testing",
-        discipline: "Fiber",
-        durationDays: 7,
-        plannedStart: d("2026-05-10"),
-        plannedFinish: d("2026-05-17"),
-        floatDays: 2,
-        percentComplete: 30,
-        owner: "Fiber Team",
-        healthStatus: HealthStatus.AT_RISK,
-      },
-      {
-        wbsCode: "ITS.03.04",
-        activityId: "A1220",
-        activityName: "SCADA interface configuration",
-        discipline: "SCADA",
-        durationDays: 9,
-        plannedStart: d("2026-05-18"),
-        plannedFinish: d("2026-05-27"),
-        floatDays: -1,
-        percentComplete: 10,
-        owner: "SCADA Specialist",
-        isCritical: true,
-        healthStatus: HealthStatus.DELAYED,
-      },
-    ],
+
     milestones: [
       {
-        milestoneCode: "MS-ITS-001",
+        milestoneCode: "MS-001",
         milestoneName: "Authority approval",
         baselineDate: d("2026-05-15"),
         forecastDate: d("2026-05-29"),
         delayDays: 14,
-        linkedActivity: "A1020",
         healthStatus: HealthStatus.CRITICAL,
       },
       {
-        milestoneCode: "MS-ITS-002",
-        milestoneName: "SCADA integration complete",
+        milestoneCode: "MS-002",
+        milestoneName: "SCADA integration",
         baselineDate: d("2026-06-10"),
         forecastDate: d("2026-06-18"),
         delayDays: 8,
-        linkedActivity: "A1220",
         healthStatus: HealthStatus.DELAYED,
+      },
+      {
+        milestoneCode: "MS-003",
+        milestoneName: "Fiber testing",
+        baselineDate: d("2026-06-20"),
+        forecastDate: d("2026-06-30"),
+        delayDays: 10,
+        healthStatus: HealthStatus.DELAYED,
+      },
+      {
+        milestoneCode: "MS-004",
+        milestoneName: "Final inspection",
+        baselineDate: d("2026-07-05"),
+        forecastDate: d("2026-07-18"),
+        delayDays: 13,
+        healthStatus: HealthStatus.CRITICAL,
       },
     ],
   });
+
+  /* ---------------------------------- */
+  /* DELAYED PROJECTS */
+  /* ---------------------------------- */
 
   await seedProject({
     code: "PRJ-002",
@@ -526,29 +382,66 @@ async function main() {
     actualProgress: 58,
     healthStatus: HealthStatus.DELAYED,
     delayedApprovals: 3,
+    blockedItems: 2,
     billingReadyAmount: 1100000,
+    topIssue: "NOC approval delay",
+    topIssueAgeDays: 12,
 
-    plannedStart: d("2025-04-01"),
-    plannedFinish: d("2026-09-30"),
-    forecastFinish: d("2026-10-20"),
     milestones: [
       {
-        milestoneCode: "MS-ITS-003",
+        milestoneCode: "MS-005",
         milestoneName: "NOC approval",
         baselineDate: d("2026-06-01"),
         forecastDate: d("2026-06-12"),
         delayDays: 11,
         healthStatus: HealthStatus.DELAYED,
       },
+      {
+        milestoneCode: "MS-006",
+        milestoneName: "Cable rerouting",
+        baselineDate: d("2026-06-15"),
+        forecastDate: d("2026-06-21"),
+        delayDays: 6,
+        healthStatus: HealthStatus.AT_RISK,
+      },
+    ],
+  });
+
+  await seedProject({
+    code: "PRJ-003",
+    name: "Bur Dubai Signal Maintenance",
+    clientName: "Dubai Municipality",
+    categoryCode: "traffic-maint",
+    projectManagerId: pm4.id,
+    contractValue: 4100000,
+    completionPct: 62,
+    plannedProgress: 78,
+    actualProgress: 62,
+    healthStatus: HealthStatus.DELAYED,
+    delayedApprovals: 6,
+    blockedItems: 1,
+    billingReadyAmount: 1800000,
+    topIssue: "Night permit approval pending",
+    topIssueAgeDays: 9,
+
+    milestones: [
+      {
+        milestoneCode: "MS-007",
+        milestoneName: "Night work permit",
+        baselineDate: d("2026-04-20"),
+        forecastDate: d("2026-05-02"),
+        delayDays: 12,
+        healthStatus: HealthStatus.DELAYED,
+      },
     ],
   });
 
   /* ---------------------------------- */
-  /* PROJECTS: TRAFFIC PROJECTS */
+  /* AT RISK PROJECTS */
   /* ---------------------------------- */
 
   await seedProject({
-    code: "PRJ-003",
+    code: "PRJ-004",
     name: "JLT Traffic Signal Works",
     clientName: "RTA",
     categoryCode: "traffic",
@@ -559,15 +452,15 @@ async function main() {
     actualProgress: 71,
     healthStatus: HealthStatus.AT_RISK,
     delayedApprovals: 2,
+    blockedItems: 1,
     billingReadyAmount: 2000000,
+    topIssue: "Material delivery risk",
+    topIssueAgeDays: 5,
 
-    plannedStart: d("2025-03-01"),
-    plannedFinish: d("2026-06-30"),
-    forecastFinish: d("2026-07-12"),
     milestones: [
       {
-        milestoneCode: "MS-TRF-001",
-        milestoneName: "Signal pole material delivery",
+        milestoneCode: "MS-008",
+        milestoneName: "Signal pole delivery",
         baselineDate: d("2026-05-20"),
         forecastDate: d("2026-05-27"),
         delayDays: 7,
@@ -577,49 +470,7 @@ async function main() {
   });
 
   await seedProject({
-    code: "PRJ-004",
-    name: "DIP Road Marking Package",
-    clientName: "DIP Authority",
-    categoryCode: "traffic",
-    projectManagerId: pm4.id,
-    contractValue: 22000000,
-    completionPct: 83,
-    plannedProgress: 85,
-    actualProgress: 83,
-    healthStatus: HealthStatus.ON_TRACK,
-    delayedApprovals: 1,
-    billingReadyAmount: 1500000,
-
-    plannedStart: d("2025-05-01"),
-    plannedFinish: d("2026-08-15"),
-    forecastFinish: d("2026-08-15"),
-  });
-
-  /* ---------------------------------- */
-  /* PROJECTS: ITS MAINTENANCE */
-  /* ---------------------------------- */
-
-  await seedProject({
     code: "PRJ-005",
-    name: "Business Bay CCTV Maintenance",
-    clientName: "Dubai Municipality",
-    categoryCode: "its-maint",
-    projectManagerId: pm.id,
-    contractValue: 7200000,
-    completionPct: 89,
-    plannedProgress: 92,
-    actualProgress: 89,
-    healthStatus: HealthStatus.ON_TRACK,
-    delayedApprovals: 0,
-    billingReadyAmount: 1600000,
-
-    plannedStart: d("2025-06-01"),
-    plannedFinish: d("2026-05-31"),
-    forecastFinish: d("2026-05-31"),
-  });
-
-  await seedProject({
-    code: "PRJ-006",
     name: "Mirdif VMS Maintenance",
     clientName: "RTA",
     categoryCode: "its-maint",
@@ -630,14 +481,14 @@ async function main() {
     actualProgress: 67,
     healthStatus: HealthStatus.AT_RISK,
     delayedApprovals: 5,
+    blockedItems: 2,
     billingReadyAmount: 1000000,
+    topIssue: "Vendor coordination pending",
+    topIssueAgeDays: 6,
 
-    plannedStart: d("2025-07-01"),
-    plannedFinish: d("2026-06-30"),
-    forecastFinish: d("2026-07-08"),
     milestones: [
       {
-        milestoneCode: "MS-ITSM-001",
+        milestoneCode: "MS-009",
         milestoneName: "VMS repair closure",
         baselineDate: d("2026-05-10"),
         forecastDate: d("2026-05-17"),
@@ -648,8 +499,26 @@ async function main() {
   });
 
   /* ---------------------------------- */
-  /* PROJECTS: TRAFFIC MAINTENANCE */
+  /* ON TRACK PROJECTS */
   /* ---------------------------------- */
+
+  await seedProject({
+    code: "PRJ-006",
+    name: "Business Bay CCTV Maintenance",
+    clientName: "Dubai Municipality",
+    categoryCode: "its-maint",
+    projectManagerId: pm.id,
+    contractValue: 7200000,
+    completionPct: 89,
+    plannedProgress: 92,
+    actualProgress: 89,
+    healthStatus: HealthStatus.ON_TRACK,
+    delayedApprovals: 0,
+    blockedItems: 0,
+    billingReadyAmount: 1600000,
+    topIssue: null,
+    topIssueAgeDays: null,
+  });
 
   await seedProject({
     code: "PRJ-007",
@@ -663,40 +532,46 @@ async function main() {
     actualProgress: 76,
     healthStatus: HealthStatus.ON_TRACK,
     delayedApprovals: 0,
+    blockedItems: 0,
     billingReadyAmount: 1100000,
-
-    plannedStart: d("2025-02-15"),
-    plannedFinish: d("2026-02-14"),
-    forecastFinish: d("2026-02-20"),
+    topIssue: null,
+    topIssueAgeDays: null,
   });
 
   await seedProject({
     code: "PRJ-008",
-    name: "Bur Dubai Signal Maintenance",
-    clientName: "Dubai Municipality",
-    categoryCode: "traffic-maint",
+    name: "DIP Road Marking Package",
+    clientName: "DIP Authority",
+    categoryCode: "traffic",
     projectManagerId: pm4.id,
-    contractValue: 4100000,
-    completionPct: 62,
-    plannedProgress: 78,
-    actualProgress: 62,
-    healthStatus: HealthStatus.DELAYED,
-    delayedApprovals: 6,
-    billingReadyAmount: 1800000,
+    contractValue: 22000000,
+    completionPct: 83,
+    plannedProgress: 85,
+    actualProgress: 83,
+    healthStatus: HealthStatus.ON_TRACK,
+    delayedApprovals: 1,
+    blockedItems: 0,
+    billingReadyAmount: 1500000,
+    topIssue: null,
+    topIssueAgeDays: null,
+  });
 
-    plannedStart: d("2025-04-15"),
-    plannedFinish: d("2026-04-14"),
-    forecastFinish: d("2026-05-04"),
-    milestones: [
-      {
-        milestoneCode: "MS-TRFM-001",
-        milestoneName: "Night work permit",
-        baselineDate: d("2026-04-20"),
-        forecastDate: d("2026-05-02"),
-        delayDays: 12,
-        healthStatus: HealthStatus.DELAYED,
-      },
-    ],
+  await seedProject({
+    code: "PRJ-009",
+    name: "Expo ITS Fiber Upgrade",
+    clientName: "EXPO City",
+    categoryCode: "its",
+    projectManagerId: pm.id,
+    contractValue: 12000000,
+    completionPct: 91,
+    plannedProgress: 91,
+    actualProgress: 91,
+    healthStatus: HealthStatus.ON_TRACK,
+    delayedApprovals: 0,
+    blockedItems: 0,
+    billingReadyAmount: 900000,
+    topIssue: null,
+    topIssueAgeDays: null,
   });
 
   console.log("Seed completed successfully.");
