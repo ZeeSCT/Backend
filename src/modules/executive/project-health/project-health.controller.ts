@@ -9,7 +9,7 @@ export class ProjectHealthController {
     private readonly projectHealthService: ProjectHealthService,
   ) {}
 
-  @Get('summary')
+  @Get('/summary')
   @ApiOperation({
     summary: 'Project summary cards',
   })
@@ -17,7 +17,7 @@ export class ProjectHealthController {
     return this.projectHealthService.getSummary(category);
   }
 
-  @Get('delayed-milestones')
+  @Get('/delayed-milestones')
   @ApiOperation({
     summary: 'Delayed milestones by project',
   })
@@ -25,7 +25,7 @@ export class ProjectHealthController {
     return this.projectHealthService.getDelayedMilestones(category);
   }
 
-  @Get('blocked-items')
+  @Get('/blocked-items')
   @ApiOperation({
     summary: 'Blocked items by project',
   })
@@ -33,7 +33,7 @@ export class ProjectHealthController {
     return this.projectHealthService.getBlockedItems(category);
   }
 
-  @Get('health-trend')
+  @Get('/health-trend')
   @ApiOperation({
     summary: 'Health trend - last 4 weeks',
   })

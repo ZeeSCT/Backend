@@ -4,7 +4,7 @@ import { ProjectHealthController } from './project-health.controller';
 import { ProjectHealthService } from './project-health.service';
  
 @Module({
-  controllers: [ProjectHealthController],
+  // controllers: [ProjectHealthController],
   providers: [ProjectHealthService, PrismaService],
   exports: [ProjectHealthService],
 })
