@@ -20,8 +20,8 @@ import {
 
 @ApiTags("Executive Screens")
 
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 
 @Controller("api/v1/executive")
 export class ExecutiveController {
