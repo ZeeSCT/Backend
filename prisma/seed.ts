@@ -23,6 +23,8 @@ function d(value: string) {
   return new Date(value);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 async function main() {
   console.log("Starting seed...");
 
@@ -61,7 +63,7 @@ async function main() {
     create: {
       name: "A. Karim",
       email: "pm@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -77,7 +79,7 @@ async function main() {
     create: {
       name: "N. Rashid",
       email: "pm2@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -93,7 +95,7 @@ async function main() {
     create: {
       name: "S. Mehta",
       email: "pm3@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -109,7 +111,7 @@ async function main() {
     create: {
       name: "F. Al Hamad",
       email: "pm4@example.com",
-      passwordHash: "seed-password-hash",
+      passwordHash,
       role: UserRole.PROJECT_MANAGER,
       isActive: true,
     },
@@ -212,6 +214,56 @@ async function main() {
     uploadedBy?: string;
   };
 
+  type SeedProjectInput = {
+    code: string;
+    name: string;
+    clientName: string;
+    categoryCode: CategoryCode;
+    projectManagerId: string;
+    contractValue?: number;
+    completionPct: number;
+    plannedProgress: number;
+    actualProgress: number;
+    healthStatus: HealthStatus;
+    delayedApprovals?: number;
+    blockedItems?: number;
+    billingReadyAmount?: number | null;
+    topIssue?: string | null;
+    topIssueAgeDays?: number | null;
+    plannedStart?: Date;
+    plannedFinish?: Date;
+    forecastFinish?: Date;
+    document?: SeedDocumentInput;
+    documents?: SeedDocumentInput[];
+    activities?: {
+      wbsCode?: string;
+      activityId: string;
+      activityName: string;
+      discipline?: string;
+      location?: string;
+      durationDays?: number;
+      plannedStart?: Date;
+      plannedFinish?: Date;
+      actualStart?: Date;
+      actualFinish?: Date;
+      floatDays?: number;
+      percentComplete?: number;
+      owner?: string;
+      isCritical?: boolean;
+      healthStatus?: HealthStatus;
+    }[];
+    milestones?: {
+      milestoneCode?: string;
+      milestoneName: string;
+      baselineDate?: Date;
+      forecastDate?: Date;
+      actualDate?: Date;
+      delayDays?: number;
+      linkedActivity?: string;
+      healthStatus?: HealthStatus;
+    }[];
+  };
+
   type SeedDocumentationStatusRecord = {
     id: string;
     stageCode: string;
@@ -225,8 +277,6 @@ async function main() {
     count: number;
     overdueDays?: number;
   };
-
-  const DAY_MS = 24 * 60 * 60 * 1000;
 
   function getDocumentationDueDate(record: SeedDocumentationStatusRecord) {
     if (record.overdueDays && record.overdueDays > 0) {
@@ -492,53 +542,7 @@ async function main() {
   /* HELPER: SEED PROJECT */
   /* ---------------------------------- */
 
-  async function seedProject(input: {
-    code: string;
-    name: string;
-    clientName: string;
-    categoryCode: CategoryCode;
-    projectManagerId: string;
-    contractValue?: number;
-    completionPct: number;
-    plannedProgress: number;
-    actualProgress: number;
-    healthStatus: HealthStatus;
-    delayedApprovals?: number;
-    blockedItems?: number;
-    billingReadyAmount?: number | null;
-    plannedStart?: Date;
-    plannedFinish?: Date;
-    forecastFinish?: Date;
-    document?: SeedDocumentInput;
-    documents?: SeedDocumentInput[];
-    activities?: {
-      wbsCode?: string;
-      activityId: string;
-      activityName: string;
-      discipline?: string;
-      location?: string;
-      durationDays?: number;
-      plannedStart?: Date;
-      plannedFinish?: Date;
-      actualStart?: Date;
-      actualFinish?: Date;
-      floatDays?: number;
-      percentComplete?: number;
-      owner?: string;
-      isCritical?: boolean;
-      healthStatus?: HealthStatus;
-    }[];
-    milestones?: {
-      milestoneCode?: string;
-      milestoneName: string;
-      baselineDate?: Date;
-      forecastDate?: Date;
-      actualDate?: Date;
-      delayDays?: number;
-      linkedActivity?: string;
-      healthStatus?: HealthStatus;
-    }[];
-  }) {
+  async function seedProject(input: SeedProjectInput) {
     const category = categoryMap[input.categoryCode];
 
     const projectData = {
@@ -555,6 +559,8 @@ async function main() {
       delayedApprovals: input.delayedApprovals ?? 0,
       blockedItems: input.blockedItems ?? 0,
       billingReadyAmount: input.billingReadyAmount ?? null,
+      topIssue: input.topIssue ?? null,
+      topIssueAgeDays: input.topIssueAgeDays ?? null,
       plannedStart: input.plannedStart ?? null,
       plannedFinish: input.plannedFinish ?? null,
       forecastFinish: input.forecastFinish ?? null,
@@ -570,23 +576,26 @@ async function main() {
       },
     });
 
-    let document: { id: string } | null = null;
+    let firstDocument: { id: string } | null = null;
 
     async function upsertPlanningDocument(
       projectId: string,
       doc: SeedDocumentInput,
     ) {
+      const stageCode = doc.stageCode ?? "pre-construction";
+
       const existingDocument = await prisma.planningDocument.findFirst({
         where: {
           projectId,
           fileName: doc.fileName,
           revision: doc.revision,
+          stageCode,
         },
       });
 
       const documentData = {
         planType: doc.planType ?? "BASELINE",
-        stageCode: doc.stageCode ?? "pre-construction",
+        stageCode,
         approvalStatusCode: doc.approvalStatusCode ?? "in-preparation",
         approver: doc.approver ?? null,
         submittedAt: doc.submittedAt ?? null,
@@ -626,8 +635,8 @@ async function main() {
     for (const doc of documentInputs) {
       const savedDocument = await upsertPlanningDocument(project.id, doc);
 
-      if (!document) {
-        document = savedDocument;
+      if (!firstDocument) {
+        firstDocument = savedDocument;
       }
     }
 
@@ -641,7 +650,7 @@ async function main() {
             },
           },
           update: {
-            documentId: document?.id ?? null,
+            documentId: firstDocument?.id ?? null,
             wbsCode: activity.wbsCode ?? null,
             activityName: activity.activityName,
             discipline: activity.discipline ?? null,
@@ -659,7 +668,7 @@ async function main() {
           },
           create: {
             projectId: project.id,
-            documentId: document?.id ?? null,
+            documentId: firstDocument?.id ?? null,
             wbsCode: activity.wbsCode ?? null,
             activityId: activity.activityId,
             activityName: activity.activityName,
@@ -690,32 +699,28 @@ async function main() {
           },
         });
 
+        const milestoneData = {
+          documentId: firstDocument?.id ?? null,
+          milestoneCode: milestone.milestoneCode ?? null,
+          milestoneName: milestone.milestoneName,
+          baselineDate: milestone.baselineDate ?? null,
+          forecastDate: milestone.forecastDate ?? null,
+          actualDate: milestone.actualDate ?? null,
+          delayDays: milestone.delayDays ?? 0,
+          linkedActivity: milestone.linkedActivity ?? null,
+          healthStatus: milestone.healthStatus ?? HealthStatus.ON_TRACK,
+        };
+
         if (existingMilestone) {
           await prisma.planningMilestone.update({
             where: { id: existingMilestone.id },
-            data: {
-              documentId: document?.id ?? null,
-              baselineDate: milestone.baselineDate ?? null,
-              forecastDate: milestone.forecastDate ?? null,
-              actualDate: milestone.actualDate ?? null,
-              delayDays: milestone.delayDays ?? 0,
-              linkedActivity: milestone.linkedActivity ?? null,
-              healthStatus: milestone.healthStatus ?? HealthStatus.ON_TRACK,
-            },
+            data: milestoneData,
           });
         } else {
           await prisma.planningMilestone.create({
             data: {
               projectId: project.id,
-              documentId: document?.id ?? null,
-              milestoneCode: milestone.milestoneCode ?? null,
-              milestoneName: milestone.milestoneName,
-              baselineDate: milestone.baselineDate ?? null,
-              forecastDate: milestone.forecastDate ?? null,
-              actualDate: milestone.actualDate ?? null,
-              delayDays: milestone.delayDays ?? 0,
-              linkedActivity: milestone.linkedActivity ?? null,
-              healthStatus: milestone.healthStatus ?? HealthStatus.ON_TRACK,
+              ...milestoneData,
             },
           });
         }
@@ -723,6 +728,313 @@ async function main() {
     }
 
     return project;
+  }
+
+  /* ---------------------------------- */
+  /* PROJECTS */
+  /* ---------------------------------- */
+
+  const projects: SeedProjectInput[] = [
+    {
+      code: "PRJ-001",
+      name: "Al Barsha MEP Works",
+      clientName: "EMAAR",
+      categoryCode: "its",
+      projectManagerId: pm.id,
+      contractValue: 42_000_000,
+      completionPct: 42,
+      plannedProgress: 61,
+      actualProgress: 42,
+      healthStatus: HealthStatus.CRITICAL,
+      delayedApprovals: 7,
+      blockedItems: 3,
+      billingReadyAmount: 1_800_000,
+      topIssue: "Authority approval delayed",
+      topIssueAgeDays: 18,
+      plannedStart: d("2025-01-05"),
+      plannedFinish: d("2026-10-31"),
+      forecastFinish: d("2026-11-18"),
+      document: {
+        fileName: "ITS2020-2A schedule rev 08.xlsx",
+        revision: "Rev.08",
+        baselineStart: d("2026-05-02"),
+        baselineFinish: d("2026-07-15"),
+        forecastFinish: d("2026-07-18"),
+        uploadedBy: admin.name,
+      },
+      activities: [
+        {
+          wbsCode: "ITS.01.02",
+          activityId: "A1020",
+          activityName: "Traffic signal controller installation",
+          discipline: "ITS",
+          durationDays: 12,
+          plannedStart: d("2026-05-02"),
+          plannedFinish: d("2026-05-14"),
+          floatDays: 0,
+          percentComplete: 42,
+          owner: "ITS Engineer",
+          isCritical: true,
+          healthStatus: HealthStatus.CRITICAL,
+        },
+        {
+          wbsCode: "ITS.01.03",
+          activityId: "A1045",
+          activityName: "Fiber backbone testing",
+          discipline: "Fiber",
+          durationDays: 7,
+          plannedStart: d("2026-05-10"),
+          plannedFinish: d("2026-05-17"),
+          floatDays: 2,
+          percentComplete: 30,
+          owner: "Fiber Team",
+          healthStatus: HealthStatus.AT_RISK,
+        },
+        {
+          wbsCode: "ITS.03.04",
+          activityId: "A1220",
+          activityName: "SCADA interface configuration",
+          discipline: "SCADA",
+          durationDays: 9,
+          plannedStart: d("2026-05-18"),
+          plannedFinish: d("2026-05-27"),
+          floatDays: -1,
+          percentComplete: 10,
+          owner: "SCADA Specialist",
+          isCritical: true,
+          healthStatus: HealthStatus.DELAYED,
+        },
+      ],
+      milestones: [
+        {
+          milestoneCode: "MS-ITS-001",
+          milestoneName: "Authority approval",
+          baselineDate: d("2026-05-15"),
+          forecastDate: d("2026-05-29"),
+          delayDays: 14,
+          linkedActivity: "A1020",
+          healthStatus: HealthStatus.CRITICAL,
+        },
+        {
+          milestoneCode: "MS-ITS-002",
+          milestoneName: "SCADA integration complete",
+          baselineDate: d("2026-06-10"),
+          forecastDate: d("2026-06-18"),
+          delayDays: 8,
+          linkedActivity: "A1220",
+          healthStatus: HealthStatus.DELAYED,
+        },
+        {
+          milestoneCode: "MS-ITS-003",
+          milestoneName: "Fiber testing",
+          baselineDate: d("2026-06-20"),
+          forecastDate: d("2026-06-30"),
+          delayDays: 10,
+          linkedActivity: "A1045",
+          healthStatus: HealthStatus.DELAYED,
+        },
+        {
+          milestoneCode: "MS-ITS-004",
+          milestoneName: "Final inspection",
+          baselineDate: d("2026-07-05"),
+          forecastDate: d("2026-07-18"),
+          delayDays: 13,
+          healthStatus: HealthStatus.CRITICAL,
+        },
+      ],
+    },
+    {
+      code: "PRJ-002",
+      name: "Dubai Creek ITS Upgrade",
+      clientName: "Dubai Municipality",
+      categoryCode: "its",
+      projectManagerId: pm2.id,
+      contractValue: 18_000_000,
+      completionPct: 58,
+      plannedProgress: 67,
+      actualProgress: 58,
+      healthStatus: HealthStatus.DELAYED,
+      delayedApprovals: 3,
+      blockedItems: 1,
+      billingReadyAmount: 1_100_000,
+      topIssue: "NOC approval pending",
+      topIssueAgeDays: 11,
+      plannedStart: d("2025-04-01"),
+      plannedFinish: d("2026-09-30"),
+      forecastFinish: d("2026-10-20"),
+      milestones: [
+        {
+          milestoneCode: "MS-ITS-005",
+          milestoneName: "NOC approval",
+          baselineDate: d("2026-06-01"),
+          forecastDate: d("2026-06-12"),
+          delayDays: 11,
+          healthStatus: HealthStatus.DELAYED,
+        },
+        {
+          milestoneCode: "MS-ITS-006",
+          milestoneName: "Cable rerouting",
+          baselineDate: d("2026-06-15"),
+          forecastDate: d("2026-06-21"),
+          delayDays: 6,
+          healthStatus: HealthStatus.AT_RISK,
+        },
+      ],
+    },
+    {
+      code: "PRJ-003",
+      name: "JLT Traffic Signal Works",
+      clientName: "RTA",
+      categoryCode: "traffic",
+      projectManagerId: pm3.id,
+      contractValue: 18_500_000,
+      completionPct: 71,
+      plannedProgress: 80,
+      actualProgress: 71,
+      healthStatus: HealthStatus.AT_RISK,
+      delayedApprovals: 2,
+      blockedItems: 0,
+      billingReadyAmount: 2_000_000,
+      topIssue: "Signal pole delivery risk",
+      topIssueAgeDays: 7,
+      plannedStart: d("2025-03-01"),
+      plannedFinish: d("2026-06-30"),
+      forecastFinish: d("2026-07-12"),
+      milestones: [
+        {
+          milestoneCode: "MS-TRF-001",
+          milestoneName: "Signal pole material delivery",
+          baselineDate: d("2026-05-20"),
+          forecastDate: d("2026-05-27"),
+          delayDays: 7,
+          healthStatus: HealthStatus.AT_RISK,
+        },
+      ],
+    },
+    {
+      code: "PRJ-004",
+      name: "DIP Road Marking Package",
+      clientName: "DIP Authority",
+      categoryCode: "traffic",
+      projectManagerId: pm4.id,
+      contractValue: 22_000_000,
+      completionPct: 83,
+      plannedProgress: 85,
+      actualProgress: 83,
+      healthStatus: HealthStatus.ON_TRACK,
+      delayedApprovals: 1,
+      blockedItems: 3,
+      billingReadyAmount: 1_500_000,
+      topIssue: "Material approval follow-up",
+      topIssueAgeDays: 4,
+      plannedStart: d("2025-05-01"),
+      plannedFinish: d("2026-08-15"),
+      forecastFinish: d("2026-08-15"),
+    },
+    {
+      code: "PRJ-005",
+      name: "Business Bay CCTV Maintenance",
+      clientName: "Dubai Municipality",
+      categoryCode: "its-maint",
+      projectManagerId: pm.id,
+      contractValue: 7_200_000,
+      completionPct: 89,
+      plannedProgress: 92,
+      actualProgress: 89,
+      healthStatus: HealthStatus.ON_TRACK,
+      delayedApprovals: 0,
+      blockedItems: 1,
+      billingReadyAmount: 1_600_000,
+      topIssue: null,
+      topIssueAgeDays: null,
+      plannedStart: d("2025-06-01"),
+      plannedFinish: d("2026-05-31"),
+      forecastFinish: d("2026-05-31"),
+    },
+    {
+      code: "PRJ-006",
+      name: "Mirdif VMS Maintenance",
+      clientName: "RTA",
+      categoryCode: "its-maint",
+      projectManagerId: pm2.id,
+      contractValue: 5_400_000,
+      completionPct: 67,
+      plannedProgress: 75,
+      actualProgress: 67,
+      healthStatus: HealthStatus.AT_RISK,
+      delayedApprovals: 5,
+      blockedItems: 2,
+      billingReadyAmount: 1_000_000,
+      topIssue: "VMS repair closure slipping",
+      topIssueAgeDays: 7,
+      plannedStart: d("2025-07-01"),
+      plannedFinish: d("2026-06-30"),
+      forecastFinish: d("2026-07-08"),
+      milestones: [
+        {
+          milestoneCode: "MS-ITSM-001",
+          milestoneName: "VMS repair closure",
+          baselineDate: d("2026-05-10"),
+          forecastDate: d("2026-05-17"),
+          delayDays: 7,
+          healthStatus: HealthStatus.AT_RISK,
+        },
+      ],
+    },
+    {
+      code: "PRJ-007",
+      name: "SZR Signal Maintenance",
+      clientName: "RTA",
+      categoryCode: "traffic-maint",
+      projectManagerId: pm3.id,
+      contractValue: 6_500_000,
+      completionPct: 76,
+      plannedProgress: 82,
+      actualProgress: 76,
+      healthStatus: HealthStatus.ON_TRACK,
+      delayedApprovals: 0,
+      blockedItems: 0,
+      billingReadyAmount: 1_100_000,
+      topIssue: null,
+      topIssueAgeDays: null,
+      plannedStart: d("2025-02-15"),
+      plannedFinish: d("2026-02-14"),
+      forecastFinish: d("2026-02-20"),
+    },
+    {
+      code: "PRJ-008",
+      name: "Bur Dubai Signal Maintenance",
+      clientName: "Dubai Municipality",
+      categoryCode: "traffic-maint",
+      projectManagerId: pm4.id,
+      contractValue: 4_100_000,
+      completionPct: 62,
+      plannedProgress: 78,
+      actualProgress: 62,
+      healthStatus: HealthStatus.DELAYED,
+      delayedApprovals: 6,
+      blockedItems: 3,
+      billingReadyAmount: 1_800_000,
+      topIssue: "Night permit approval pending",
+      topIssueAgeDays: 9,
+      plannedStart: d("2025-04-15"),
+      plannedFinish: d("2026-04-14"),
+      forecastFinish: d("2026-05-04"),
+      milestones: [
+        {
+          milestoneCode: "MS-TRFM-001",
+          milestoneName: "Night work permit",
+          baselineDate: d("2026-04-20"),
+          forecastDate: d("2026-05-02"),
+          delayDays: 12,
+          healthStatus: HealthStatus.DELAYED,
+        },
+      ],
+    },
+  ];
+
+  for (const project of projects) {
+    await seedProject(project);
   }
 
   /* ---------------------------------- */
@@ -1114,277 +1426,6 @@ async function main() {
 
     console.log("Documentation status records seeded.");
   }
-
-  /* ---------------------------------- */
-  /* PROJECTS: ITS PROJECTS */
-  /* ---------------------------------- */
-
-  await seedProject({
-    code: "PRJ-001",
-    name: "Al Barsha MEP Works",
-    clientName: "EMAAR",
-    categoryCode: "its",
-    projectManagerId: pm.id,
-    contractValue: 42000000,
-    completionPct: 42,
-    plannedProgress: 61,
-    actualProgress: 42,
-    healthStatus: HealthStatus.CRITICAL,
-    delayedApprovals: 7,
-    blockedItems: 3,
-    billingReadyAmount: 1800000,
-    plannedStart: d("2025-01-05"),
-    plannedFinish: d("2026-10-31"),
-    forecastFinish: d("2026-11-18"),
-    activities: [
-      {
-        wbsCode: "ITS.01.02",
-        activityId: "A1020",
-        activityName: "Traffic signal controller installation",
-        discipline: "ITS",
-        durationDays: 12,
-        plannedStart: d("2026-05-02"),
-        plannedFinish: d("2026-05-14"),
-        floatDays: 0,
-        percentComplete: 42,
-        owner: "ITS Engineer",
-        isCritical: true,
-        healthStatus: HealthStatus.CRITICAL,
-      },
-      {
-        wbsCode: "ITS.01.03",
-        activityId: "A1045",
-        activityName: "Fiber backbone testing",
-        discipline: "Fiber",
-        durationDays: 7,
-        plannedStart: d("2026-05-10"),
-        plannedFinish: d("2026-05-17"),
-        floatDays: 2,
-        percentComplete: 30,
-        owner: "Fiber Team",
-        healthStatus: HealthStatus.AT_RISK,
-      },
-      {
-        wbsCode: "ITS.03.04",
-        activityId: "A1220",
-        activityName: "SCADA interface configuration",
-        discipline: "SCADA",
-        durationDays: 9,
-        plannedStart: d("2026-05-18"),
-        plannedFinish: d("2026-05-27"),
-        floatDays: -1,
-        percentComplete: 10,
-        owner: "SCADA Specialist",
-        isCritical: true,
-        healthStatus: HealthStatus.DELAYED,
-      },
-    ],
-    milestones: [
-      {
-        milestoneCode: "MS-ITS-001",
-        milestoneName: "Authority approval",
-        baselineDate: d("2026-05-15"),
-        forecastDate: d("2026-05-29"),
-        delayDays: 14,
-        linkedActivity: "A1020",
-        healthStatus: HealthStatus.CRITICAL,
-      },
-      {
-        milestoneCode: "MS-ITS-002",
-        milestoneName: "SCADA integration complete",
-        baselineDate: d("2026-06-10"),
-        forecastDate: d("2026-06-18"),
-        delayDays: 8,
-        linkedActivity: "A1220",
-        healthStatus: HealthStatus.DELAYED,
-      },
-    ],
-  });
-
-  await seedProject({
-    code: "PRJ-002",
-    name: "Dubai Creek ITS Upgrade",
-    clientName: "Dubai Municipality",
-    categoryCode: "its",
-    projectManagerId: pm2.id,
-    contractValue: 18000000,
-    completionPct: 58,
-    plannedProgress: 67,
-    actualProgress: 58,
-    healthStatus: HealthStatus.DELAYED,
-    delayedApprovals: 3,
-    blockedItems: 1,
-    billingReadyAmount: 1100000,
-    plannedStart: d("2025-04-01"),
-    plannedFinish: d("2026-09-30"),
-    forecastFinish: d("2026-10-20"),
-    milestones: [
-      {
-        milestoneCode: "MS-ITS-003",
-        milestoneName: "NOC approval",
-        baselineDate: d("2026-06-01"),
-        forecastDate: d("2026-06-12"),
-        delayDays: 11,
-        healthStatus: HealthStatus.DELAYED,
-      },
-    ],
-  });
-
-  /* ---------------------------------- */
-  /* PROJECTS: TRAFFIC PROJECTS */
-  /* ---------------------------------- */
-
-  await seedProject({
-    code: "PRJ-003",
-    name: "JLT Traffic Signal Works",
-    clientName: "RTA",
-    categoryCode: "traffic",
-    projectManagerId: pm3.id,
-    contractValue: 18500000,
-    completionPct: 71,
-    plannedProgress: 80,
-    actualProgress: 71,
-    healthStatus: HealthStatus.AT_RISK,
-    delayedApprovals: 2,
-    blockedItems: 0,
-    billingReadyAmount: 2000000,
-    plannedStart: d("2025-03-01"),
-    plannedFinish: d("2026-06-30"),
-    forecastFinish: d("2026-07-12"),
-    milestones: [
-      {
-        milestoneCode: "MS-TRF-001",
-        milestoneName: "Signal pole material delivery",
-        baselineDate: d("2026-05-20"),
-        forecastDate: d("2026-05-27"),
-        delayDays: 7,
-        healthStatus: HealthStatus.AT_RISK,
-      },
-    ],
-  });
-
-  await seedProject({
-    code: "PRJ-004",
-    name: "DIP Road Marking Package",
-    clientName: "DIP Authority",
-    categoryCode: "traffic",
-    projectManagerId: pm4.id,
-    contractValue: 22000000,
-    completionPct: 83,
-    plannedProgress: 85,
-    actualProgress: 83,
-    healthStatus: HealthStatus.ON_TRACK,
-    delayedApprovals: 1,
-    blockedItems: 3,
-    billingReadyAmount: 1500000,
-    plannedStart: d("2025-05-01"),
-    plannedFinish: d("2026-08-15"),
-    forecastFinish: d("2026-08-15"),
-  });
-
-  /* ---------------------------------- */
-  /* PROJECTS: ITS MAINTENANCE */
-  /* ---------------------------------- */
-
-  await seedProject({
-    code: "PRJ-005",
-    name: "Business Bay CCTV Maintenance",
-    clientName: "Dubai Municipality",
-    categoryCode: "its-maint",
-    projectManagerId: pm.id,
-    contractValue: 7200000,
-    completionPct: 89,
-    plannedProgress: 92,
-    actualProgress: 89,
-    healthStatus: HealthStatus.ON_TRACK,
-    delayedApprovals: 0,
-    blockedItems: 1,
-    billingReadyAmount: 1600000,
-    plannedStart: d("2025-06-01"),
-    plannedFinish: d("2026-05-31"),
-    forecastFinish: d("2026-05-31"),
-  });
-
-  await seedProject({
-    code: "PRJ-006",
-    name: "Mirdif VMS Maintenance",
-    clientName: "RTA",
-    categoryCode: "its-maint",
-    projectManagerId: pm2.id,
-    contractValue: 5400000,
-    completionPct: 67,
-    plannedProgress: 75,
-    actualProgress: 67,
-    healthStatus: HealthStatus.AT_RISK,
-    delayedApprovals: 5,
-    blockedItems: 2,
-    billingReadyAmount: 1000000,
-    plannedStart: d("2025-07-01"),
-    plannedFinish: d("2026-06-30"),
-    forecastFinish: d("2026-07-08"),
-    milestones: [
-      {
-        milestoneCode: "MS-ITSM-001",
-        milestoneName: "VMS repair closure",
-        baselineDate: d("2026-05-10"),
-        forecastDate: d("2026-05-17"),
-        delayDays: 7,
-        healthStatus: HealthStatus.AT_RISK,
-      },
-    ],
-  });
-
-  /* ---------------------------------- */
-  /* PROJECTS: TRAFFIC MAINTENANCE */
-  /* ---------------------------------- */
-
-  await seedProject({
-    code: "PRJ-007",
-    name: "SZR Signal Maintenance",
-    clientName: "RTA",
-    categoryCode: "traffic-maint",
-    projectManagerId: pm3.id,
-    contractValue: 6500000,
-    completionPct: 76,
-    plannedProgress: 82,
-    actualProgress: 76,
-    healthStatus: HealthStatus.ON_TRACK,
-    delayedApprovals: 0,
-    blockedItems: 0,
-    billingReadyAmount: 1100000,
-    plannedStart: d("2025-02-15"),
-    plannedFinish: d("2026-02-14"),
-    forecastFinish: d("2026-02-20"),
-  });
-
-  await seedProject({
-    code: "PRJ-008",
-    name: "Bur Dubai Signal Maintenance",
-    clientName: "Dubai Municipality",
-    categoryCode: "traffic-maint",
-    projectManagerId: pm4.id,
-    contractValue: 4100000,
-    completionPct: 62,
-    plannedProgress: 78,
-    actualProgress: 62,
-    healthStatus: HealthStatus.DELAYED,
-    delayedApprovals: 6,
-    blockedItems: 3,
-    billingReadyAmount: 1800000,
-    plannedStart: d("2025-04-15"),
-    plannedFinish: d("2026-04-14"),
-    forecastFinish: d("2026-05-04"),
-    milestones: [
-      {
-        milestoneCode: "MS-TRFM-001",
-        milestoneName: "Night work permit",
-        baselineDate: d("2026-04-20"),
-        forecastDate: d("2026-05-02"),
-        delayDays: 12,
-        healthStatus: HealthStatus.DELAYED,
-      },
-    ],
-  });
 
   await seedDocumentationStatusRecords();
 
