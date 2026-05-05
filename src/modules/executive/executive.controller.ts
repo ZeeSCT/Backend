@@ -28,8 +28,8 @@ import { ProjectHealthService } from "./project-health/project-health.service";
 
 @ApiTags("Executive Screens")
 
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 
 @Controller("api/v1/executive")
 export class ExecutiveController {
