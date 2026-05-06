@@ -34,9 +34,6 @@ export class ExecutiveController {
 
   @Get("portfolio-overview")
   @ApiOperation({ summary: "HTML 1.1 Portfolio overview screen data" })
-  // portfolioOverview() {
-  //   return this.service.portfolioOverview();
-  // }
   portfolioOverview(@Query("category") category?: string) {
     return this.portfolioOverviewService.getOverview(category);
   }
@@ -108,5 +105,11 @@ export class ExecutiveController {
       category,
       projectId,
     );
+  }
+
+  @Get("lookups")
+  @ApiOperation({ summary: "Executive screen lookup data" })
+  getLookups() {
+    return this.service.getLookups();
   }
 }
