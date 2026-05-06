@@ -1,5 +1,4 @@
 import { Controller, Get, Query, UseGuards } from "@nestjs/common";
-import { RevenueBillingService } from "./revenue-billing/revenue-billing.service";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -10,7 +9,6 @@ import {
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 
 import { ExecutiveService } from "./executive.service";
-
 import { PortfolioOverviewService } from "./portfolio-overview/portfolio-overview.service";
 
 import {
@@ -24,23 +22,34 @@ import {
   PortfolioCategoryCode as ProjectDrillDownCategoryCode,
 } from "./project-drilldown/project-drilldown.service";
 
+import { ApprovalBottlenecksService } from "./approval-bottlenecks/approval-bottlenecks.service";
 import { ProjectHealthService } from "./project-health/project-health.service";
+import { RevenueBillingService } from "./revenue-billing/revenue-billing.service";
 
 @ApiTags("Executive Screens")
-
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-
 @Controller("api/v1/executive")
 export class ExecutiveController {
   constructor(
-  private readonly service: ExecutiveService,
-  private readonly portfolioOverviewService: PortfolioOverviewService,
-  private readonly documentStatusService: DocumentStatusService,
-  private readonly projectDrillDownService: ProjectDrillDownService,
-  private readonly projectHealthService: ProjectHealthService,
-  private readonly revenueBillingService: RevenueBillingService,
-) {}
+    private readonly service: ExecutiveService,
+    private readonly portfolioOverviewService: PortfolioOverviewService,
+    private readonly documentStatusService: DocumentStatusService,
+    private readonly projectDrillDownService: ProjectDrillDownService,
+    private readonly approvalBottlenecksService: ApprovalBottlenecksService,
+    private readonly projectHealthService: ProjectHealthService,
+    private readonly revenueBillingService: RevenueBillingService,
+  ) {}
+
+  /* ========================================= */
+  /* LOOKUPS */
+  /* ========================================= */
+
+  @Get("lookups")
+  @ApiOperation({ summary: "Executive screen lookup data" })
+  getLookups() {
+    return this.service.getLookups();
+  }
 
   /* ========================================= */
   /* PORTFOLIO OVERVIEW */
@@ -50,7 +59,11 @@ export class ExecutiveController {
   @ApiOperation({
     summary: "HTML 1.1 Portfolio overview screen data",
   })
-  portfolioOverview(@Query("category") category?: string) {
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  portfolioOverview(@Query("category") category = "all") {
     return this.portfolioOverviewService.getOverview(category);
   }
 
@@ -62,9 +75,11 @@ export class ExecutiveController {
   @ApiOperation({
     summary: "Project health summary",
   })
-  getProjectHealthSummary(
-    @Query("category") category: string = "all",
-  ) {
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  getProjectHealthSummary(@Query("category") category = "all") {
     return this.projectHealthService.getSummary(category);
   }
 
@@ -72,9 +87,11 @@ export class ExecutiveController {
   @ApiOperation({
     summary: "Blocked items by project",
   })
-  getBlockedItems(
-    @Query("category") category: string = "all",
-  ) {
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  getBlockedItems(@Query("category") category = "all") {
     return this.projectHealthService.getBlockedItems(category);
   }
 
@@ -82,9 +99,11 @@ export class ExecutiveController {
   @ApiOperation({
     summary: "Delayed milestones by project",
   })
-  getDelayedMilestones(
-    @Query("category") category: string = "all",
-  ) {
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  getDelayedMilestones(@Query("category") category = "all") {
     return this.projectHealthService.getDelayedMilestones(category);
   }
 
@@ -96,26 +115,37 @@ export class ExecutiveController {
     return this.projectHealthService.getHealthTrend();
   }
 
+  /* ========================================= */
+  /* REVENUE & BILLING */
+  /* ========================================= */
 
   /* ========================================= */
-/* REVENUE & BILLING */
-/* ========================================= */
+  /* REVENUE & BILLING */
+  /* ========================================= */
 
-@Get("revenue-billing/summary")
-@ApiOperation({
-  summary: "Revenue billing summary",
-})
-getRevenueBillingSummary() {
-  return this.revenueBillingService.getSummary();
-}
+  @Get("revenue-billing/summary")
+  @ApiOperation({
+    summary: "Revenue billing summary",
+  })
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  getRevenueBillingSummary(@Query("category") category = "all") {
+    return this.revenueBillingService.getSummary(category);
+  }
 
-@Get("revenue-billing/by-project")
-@ApiOperation({
-  summary: "Revenue billing by project",
-})
-getRevenueBillingProjects() {
-  return this.revenueBillingService.getBillingByProject();
-}
+  @Get("revenue-billing/by-project")
+  @ApiOperation({
+    summary: "Revenue billing by project",
+  })
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  getRevenueBillingProjects(@Query("category") category = "all") {
+    return this.revenueBillingService.getBillingByProject(category);
+  }
 
   /* ========================================= */
   /* APPROVAL BOTTLENECKS */
@@ -125,8 +155,12 @@ getRevenueBillingProjects() {
   @ApiOperation({
     summary: "HTML 1.4 Approval bottlenecks screen data",
   })
-  approvalBottlenecks() {
-    return this.service.approvalBottlenecks();
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  approvalBottlenecks(@Query("category") category = "all") {
+    return this.approvalBottlenecksService.getApprovalBottlenecks(category);
   }
 
   /* ========================================= */
@@ -140,31 +174,16 @@ getRevenueBillingProjects() {
   @ApiQuery({
     name: "category",
     required: false,
-    enum: ["all", "its", "traffic", "its-maint", "traffic-maint"],
   })
   @ApiQuery({
     name: "stage",
     required: false,
-    enum: [
-      "pre-construction",
-      "design",
-      "procurement",
-      "construction",
-      "testing-commissioning",
-      "closeout",
-    ],
   })
   documentationStatus(
-    @Query("category")
-    category: PortfolioCategoryCode = "all",
-
-    @Query("stage")
-    stage: DocumentationStage = "pre-construction",
+    @Query("category") category: PortfolioCategoryCode = "all",
+    @Query("stage") stage: DocumentationStage = "pre-construction",
   ) {
-    return this.documentStatusService.getDocumentStatus(
-      category,
-      stage,
-    );
+    return this.documentStatusService.getDocumentStatus(category, stage);
   }
 
   /* ========================================= */
@@ -178,18 +197,14 @@ getRevenueBillingProjects() {
   @ApiQuery({
     name: "category",
     required: false,
-    enum: ["all", "its", "traffic", "its-maint", "traffic-maint"],
   })
   @ApiQuery({
     name: "projectId",
     required: false,
   })
   projectDrillDown(
-    @Query("category")
-    category: ProjectDrillDownCategoryCode = "all",
-
-    @Query("projectId")
-    projectId?: string,
+    @Query("category") category: ProjectDrillDownCategoryCode = "all",
+    @Query("projectId") projectId?: string,
   ) {
     return this.projectDrillDownService.getProjectDrillDown(
       category,
