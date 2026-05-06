@@ -205,6 +205,7 @@ async function main() {
     approver?: string;
     submittedAt?: Date;
     dueDate?: Date;
+    approvedAt?: Date | null;
     count?: number;
     baselineStart?: Date;
     baselineFinish?: Date;
@@ -591,6 +592,11 @@ async function main() {
         approver: doc.approver ?? null,
         submittedAt: doc.submittedAt ?? null,
         dueDate: doc.dueDate ?? null,
+        approvedAt:
+          doc.approvedAt ??
+          (doc.approvalStatusCode === "approved"
+            ? (doc.submittedAt ?? null)
+            : null),
         count: doc.count ?? 1,
         baselineStart: doc.baselineStart ?? null,
         baselineFinish: doc.baselineFinish ?? null,
@@ -1088,6 +1094,10 @@ async function main() {
         approver: record.approver,
         submittedAt: record.submittedAt,
         dueDate,
+        approvedAt:
+          record.approvalStatusCode === "approved"
+            ? new Date(record.submittedAt.getTime() + 4 * DAY_MS)
+            : null,
         count: record.count,
         status: RecordStatus.ACTIVE,
         uploadedBy: admin.name,

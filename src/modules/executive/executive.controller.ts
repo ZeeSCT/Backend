@@ -7,7 +7,7 @@ import {
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { ExecutiveService } from "./executive.service";
-import {PortfolioOverviewService} from "./portfolio-overview/portfolio-overview.service"
+import { PortfolioOverviewService } from "./portfolio-overview/portfolio-overview.service";
 import {
   DocumentStatusService,
   DocumentationStage,
@@ -17,27 +17,27 @@ import {
   ProjectDrillDownService,
   PortfolioCategoryCode as ProjectDrillDownCategoryCode,
 } from "./project-drilldown/project-drilldown.service";
+import { ApprovalBottlenecksService } from "./approval-bottlenecks/approval-bottlenecks.service";
 
 @ApiTags("Executive Screens")
-
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-
 @Controller("api/v1/executive")
 export class ExecutiveController {
   constructor(
-  private readonly service: ExecutiveService,
-  private readonly portfolioOverviewService: PortfolioOverviewService,
-  private readonly documentStatusService: DocumentStatusService,
-  private readonly projectDrillDownService: ProjectDrillDownService,
-) {} 
+    private readonly service: ExecutiveService,
+    private readonly portfolioOverviewService: PortfolioOverviewService,
+    private readonly documentStatusService: DocumentStatusService,
+    private readonly projectDrillDownService: ProjectDrillDownService,
+    private readonly approvalBottlenecksService: ApprovalBottlenecksService,
+  ) {}
 
   @Get("portfolio-overview")
   @ApiOperation({ summary: "HTML 1.1 Portfolio overview screen data" })
   // portfolioOverview() {
   //   return this.service.portfolioOverview();
   // }
-  portfolioOverview(@Query('category') category?: string) {
+  portfolioOverview(@Query("category") category?: string) {
     return this.portfolioOverviewService.getOverview(category);
   }
 
@@ -55,8 +55,12 @@ export class ExecutiveController {
 
   @Get("approval-bottlenecks")
   @ApiOperation({ summary: "HTML 1.4 Approval bottlenecks screen data" })
-  approvalBottlenecks() {
-    return this.service.approvalBottlenecks();
+  @ApiQuery({
+    name: "category",
+    required: false,
+  })
+  approvalBottlenecks(@Query("category") category = "all") {
+    return this.approvalBottlenecksService.getApprovalBottlenecks(category);
   }
 
   @Get("documentation-status")
@@ -86,23 +90,23 @@ export class ExecutiveController {
   }
 
   @Get("project-drilldown")
-@ApiOperation({ summary: "HTML 1.6 Project drill-down screen data" })
-@ApiQuery({
-  name: "category",
-  required: false,
-  enum: ["all", "its", "traffic", "its-maint", "traffic-maint"],
-})
-@ApiQuery({
-  name: "projectId",
-  required: false,
-})
-projectDrillDown(
-  @Query("category") category: ProjectDrillDownCategoryCode = "all",
-  @Query("projectId") projectId?: string,
-) {
-  return this.projectDrillDownService.getProjectDrillDown(
-    category,
-    projectId,
-  );
-}
+  @ApiOperation({ summary: "HTML 1.6 Project drill-down screen data" })
+  @ApiQuery({
+    name: "category",
+    required: false,
+    enum: ["all", "its", "traffic", "its-maint", "traffic-maint"],
+  })
+  @ApiQuery({
+    name: "projectId",
+    required: false,
+  })
+  projectDrillDown(
+    @Query("category") category: ProjectDrillDownCategoryCode = "all",
+    @Query("projectId") projectId?: string,
+  ) {
+    return this.projectDrillDownService.getProjectDrillDown(
+      category,
+      projectId,
+    );
+  }
 }

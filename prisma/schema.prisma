@@ -262,6 +262,8 @@ model PlanningDocument {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  approvedAt DateTime?
+
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   stage          DocumentationStageLookup     @relation(fields: [stageCode], references: [code])
