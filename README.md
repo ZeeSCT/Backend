@@ -145,6 +145,7 @@ export class PrismaService
 ```cmd
 copy .env.example .env
 npm install
+set NODE_TLS_REJECT_UNAUTHORIZED=0
 npx prisma generate
 npx prisma migrate dev --name init
 npx prisma db seed

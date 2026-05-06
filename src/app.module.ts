@@ -13,6 +13,7 @@ import { QaqcModule } from './modules/qaqc/qaqc.module';
 import { ProcurementModule } from './modules/procurement/procurement.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ScreenCatalogModule } from './modules/screen-catalog/screen-catalog.module';
+import { RevenueBillingModule } from './modules/executive/revenue-billing/revenue-billing.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -23,6 +24,7 @@ import { ScreenCatalogModule } from './modules/screen-catalog/screen-catalog.mod
     DashboardModule,
     PortfolioOverviewModule,
     ExecutiveModule,
+    RevenueBillingModule,
     ProjectsModule,
     TendersModule,
     PlanningModule,
