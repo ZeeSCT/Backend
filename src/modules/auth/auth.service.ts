@@ -40,6 +40,29 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     return this.response(user);
   }
+async adminLogin(dto: LoginDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email.trim().toLowerCase() },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException("Invalid credentials");
+    }
+
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+
+    if (!valid) {
+      throw new UnauthorizedException("Invalid credentials");
+    }
+
+    // 🔥 ROLE CHECK (CORE LOGIC)
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new UnauthorizedException("Access denied: SUPER ADMIN only");
+    }
+
+    return this.response(user);
+  }
+
   async response(user: any) {
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
@@ -57,5 +80,6 @@ export class AuthService {
         role: user.role,
       },
     };
+    
   }
 }
