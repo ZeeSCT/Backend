@@ -1,195 +1,196 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../../common/prisma/prisma.service';
-import { RecordStatus, InvoiceStatus } from '@prisma/client';
-import { Money } from '../../../common/utils/money.util';
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { Prisma, RecordStatus } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
+
+type BillingStatus = "READY" | "PARTIAL" | "NOT_READY";
+type BillingTone = "g" | "w" | "d";
 
 @Injectable()
 export class RevenueBillingService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ----------------------------------
-  // DASHBOARD SUMMARY
-  // ----------------------------------
-  async getSummary() {
-    const today = new Date();
+  async getSummary(category = "all") {
+    const projectWhere = await this.buildProjectWhere(category);
 
     const projects = await this.prisma.project.findMany({
-      where: { status: RecordStatus.ACTIVE },
+      where: projectWhere,
       include: {
         billing: true,
-        invoices: true, // IMPORTANT: assume relation exists
       },
     });
 
-    let contractValue = 0;
-    let invoicedToDate = 0;
-    let billingReadyNow = 0;
-    let overdueReceivables = 0;
+    const contractValue = projects.reduce(
+      (sum, project) =>
+        sum + Number(project.billing?.contractValue ?? project.contractValue ?? 0),
+      0,
+    );
 
-    for (const p of projects) {
-      const billing = p.billing;
+    const invoicedToDate = projects.reduce(
+      (sum, project) => sum + Number(project.billing?.invoicedToDate ?? 0),
+      0,
+    );
 
-      const contract = Money.toNumber(billing?.contractValue);
-      const invoiced = Money.toNumber(billing?.invoicedToDate);
-      const billingReady = Money.toNumber(billing?.billingReadyAmount);
+    const billingReadyNow = projects.reduce(
+      (sum, project) =>
+        sum +
+        Number(
+          project.billing?.billingReadyAmount ??
+            project.billingReadyAmount ??
+            0,
+        ),
+      0,
+    );
 
-      contractValue += contract;
-      invoicedToDate += invoiced;
-      billingReadyNow += billingReady;
+    const overdueReceivables = projects.reduce(
+      (sum, project) => sum + Number(project.billing?.overdueReceivables ?? 0),
+      0,
+    );
 
-      // ----------------------------------
-      // OVERDUE RECEIVABLES LOGIC
-      // ----------------------------------
-      const overdue = (p.invoices ?? []).filter(
-        (inv) =>
-          inv.status === InvoiceStatus.OVERDUE &&
-          new Date(inv.dueDate) < today
+    const billingReadyProjects = projects.filter((project) => {
+      const amount = Number(
+        project.billing?.billingReadyAmount ?? project.billingReadyAmount ?? 0,
       );
 
-      overdueReceivables += overdue.reduce(
-        (sum, inv) => sum + Money.toNumber(inv.amount),
-        0
-      );
-    }
+      return amount > 0;
+    }).length;
 
-    // ----------------------------------
-    // SAFE PERCENTAGE CALCULATION
-    // ----------------------------------
     const invoicedPct =
       contractValue > 0
         ? Math.round((invoicedToDate / contractValue) * 100)
         : 0;
-
-    const billingReadyProjects = projects.filter((p) =>
-      Money.toNumber(p.billing?.billingReadyAmount) > 0
-    ).length;
 
     return {
       contractValue,
       invoicedToDate,
       billingReadyNow,
       overdueReceivables,
-
       totalProjects: projects.length,
       billingReadyProjects,
-
       invoicedPct,
     };
   }
 
-  // ----------------------------------
-  // BILLING BY PROJECT
-  // ----------------------------------
-  async getBillingByProject() {
-  const projects = await this.prisma.project.findMany({
-    where: {
-      status: RecordStatus.ACTIVE,
-    },
+  async getBillingByProject(category = "all") {
+    const projectWhere = await this.buildProjectWhere(category);
 
-    include: {
-      billing: true,
-    },
+    const projects = await this.prisma.project.findMany({
+      where: projectWhere,
+      include: {
+        billing: true,
+      },
+      orderBy: {
+        contractValue: "desc",
+      },
+    });
 
-    orderBy: {
-      name: 'asc',
-    },
-  });
-
-  return projects
-    .map((p) => {
-      const billing = p.billing;
-
-      const contractValue = Money.toNumber(
-        billing?.contractValue,
+    return projects.map((project) => {
+      const contractValue = Number(
+        project.billing?.contractValue ?? project.contractValue ?? 0,
       );
 
-      const invoicedToDate = Money.toNumber(
-        billing?.invoicedToDate,
+      const invoicedToDate = Number(project.billing?.invoicedToDate ?? 0);
+
+      const billingReadyAmount = Number(
+        project.billing?.billingReadyAmount ??
+          project.billingReadyAmount ??
+          0,
       );
 
-      const billingReadyAmount = Money.toNumber(
-        billing?.billingReadyAmount,
+      const progressPct = project.completionPct ?? 0;
+
+      const { status, tone } = this.getBillingStatusAndTone(
+        billingReadyAmount,
+        progressPct,
       );
-
-      // Remaining amount to invoice
-      const remainingAmount =
-        contractValue - invoicedToDate;
-
-      /// Remaining % to invoice
-const progressPct =
-  contractValue > 0
-    ? Math.round(
-        ((contractValue - invoicedToDate) /
-          contractValue) *
-          100,
-      )
-    : 0;
-
-      // ----------------------------------
-      // STATUS USING SWITCH
-      // ----------------------------------
-
-      let status: 'READY' | 'PARTIAL' | 'NOT_READY';
-
-      switch (true) {
-        case billingReadyAmount === remainingAmount &&
-          billingReadyAmount > 0:
-          status = 'READY';
-          break;
-
-        case billingReadyAmount > 0 &&
-          billingReadyAmount < remainingAmount:
-          status = 'PARTIAL';
-          break;
-
-        default:
-          status = 'NOT_READY';
-      }
-
-      // ----------------------------------
-      // PROGRESS BAR COLOR
-      // ----------------------------------
-
-      let tone: 'g' | 'w' | 'd';
-
-      switch (status) {
-        case 'READY':
-          tone = 'g';
-          break;
-
-        case 'PARTIAL':
-          tone = 'w';
-          break;
-
-        default:
-          tone = 'd';
-      }
 
       return {
-        projectId: p.id,
-        projectCode: p.code,
-
-        projectName: p.name,
-        clientName: p.clientName,
-
+        projectId: project.id,
+        projectCode: project.code,
+        projectName: project.name,
+        clientName: project.clientName,
         contractValue,
         invoicedToDate,
-
         progressPct,
-
         billingReadyAmount,
-
         status,
         tone,
       };
-    })
+    });
+  }
 
-    // Remove empty projects
-    .filter(
-      (p) =>
-        p.contractValue > 0 ||
-        p.invoicedToDate > 0,
-    );
+  private async buildProjectWhere(
+    category = "all",
+  ): Promise<Prisma.ProjectWhereInput> {
+    const selectedCategory = await this.normalizeCategory(category);
 
-  } 
-} 
+    return {
+      status: RecordStatus.ACTIVE,
+
+      ...(selectedCategory !== "all"
+        ? {
+            OR: [
+              {
+                portfolio: selectedCategory,
+              },
+              {
+                portfolioCategory: {
+                  code: selectedCategory,
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  private async normalizeCategory(category?: string) {
+    const normalized = (category || "all").toLowerCase();
+
+    if (normalized === "all") {
+      return "all";
+    }
+
+    const exists = await this.prisma.portfolioCategory.findFirst({
+      where: {
+        code: normalized,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!exists) {
+      throw new BadRequestException("Invalid portfolio category");
+    }
+
+    return normalized;
+  }
+
+  private getBillingStatusAndTone(
+    billingReadyAmount: number,
+    progressPct: number,
+  ): {
+    status: BillingStatus;
+    tone: BillingTone;
+  } {
+    if (billingReadyAmount > 0 && progressPct >= 60) {
+      return {
+        status: "READY",
+        tone: "g",
+      };
+    }
+
+    if (billingReadyAmount > 0) {
+      return {
+        status: "PARTIAL",
+        tone: "w",
+      };
+    }
+
+    return {
+      status: "NOT_READY",
+      tone: "d",
+    };
+  }
+}

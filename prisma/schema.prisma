@@ -84,7 +84,7 @@ model Project {
   // Store values like: its, traffic, its-maint, traffic-maint
   portfolio String
 
-  // New proper relation to PortfolioCategory
+  // Proper relation to PortfolioCategory
   portfolioCategoryId String?
   portfolioCategory   PortfolioCategory? @relation(fields: [portfolioCategoryId], references: [id], onDelete: SetNull)
 
@@ -97,10 +97,9 @@ model Project {
   healthStatus    HealthStatus @default(ON_TRACK)
 
   // Dashboard fields for portfolio overview
-  delayedApprovals   Int             @default(0)
-  blockedItems       Int             @default(0)
-  billingReadyAmount Decimal?        @db.Decimal(18, 2)
-  billing            ProjectBilling? @relation("ProjectBillingRelation")
+  delayedApprovals   Int      @default(0)
+  blockedItems       Int      @default(0)
+  billingReadyAmount Decimal? @db.Decimal(18, 2)
   topIssue           String?
   topIssueAgeDays    Int?
 
@@ -124,7 +123,10 @@ model Project {
   materialRequests MaterialRequest[]
   purchaseOrders   PurchaseOrder[]
   assets           Asset[]
-  invoices         Invoice[]
+
+  // Revenue & billing
+  invoices Invoice[]
+  billing  ProjectBilling? @relation("ProjectBillingRelation")
 
   @@index([portfolio])
   @@index([portfolioCategoryId])
@@ -166,6 +168,10 @@ model Invoice {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   items InvoiceItem[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([dueDate])
 }
 
 model InvoiceItem {
@@ -178,6 +184,8 @@ model InvoiceItem {
   createdAt DateTime @default(now())
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
 
 model ProjectBilling {
@@ -190,6 +198,9 @@ model ProjectBilling {
   invoicedToDate     Decimal? @db.Decimal(18, 2)
   billingReadyAmount Decimal? @db.Decimal(18, 2)
   overdueReceivables Decimal? @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model DocumentationStageLookup {
@@ -293,6 +304,10 @@ model Tender {
   updatedAt          DateTime     @updatedAt
 
   project Project? @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([stage])
+  @@index([status])
 }
 
 model PlanningDocument {
@@ -308,7 +323,9 @@ model PlanningDocument {
   approver    String?
   submittedAt DateTime?
   dueDate     DateTime?
-  count       Int       @default(1)
+  approvedAt  DateTime?
+
+  count Int @default(1)
 
   baselineStart  DateTime?
   baselineFinish DateTime?
@@ -334,6 +351,7 @@ model PlanningDocument {
   @@index([approvalStatusCode])
   @@index([status])
   @@index([dueDate])
+  @@index([approvedAt])
 }
 
 model PlanningActivity {
@@ -365,6 +383,7 @@ model PlanningActivity {
   @@index([projectId])
   @@index([activityId])
   @@index([wbsCode])
+  @@index([healthStatus])
 }
 
 model PlanningMilestone {
@@ -386,6 +405,9 @@ model PlanningMilestone {
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([documentId])
+  @@index([healthStatus])
+  @@index([delayDays])
 }
 
 model PlanningResource {
@@ -406,7 +428,9 @@ model PlanningResource {
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([documentId])
   @@index([activityId])
+  @@index([healthStatus])
 }
 
 model Inspection {
@@ -424,6 +448,9 @@ model Inspection {
   updatedAt      DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([healthStatus])
 }
 
 model Ncr {
@@ -440,6 +467,9 @@ model Ncr {
   updatedAt    DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([healthStatus])
 }
 
 model MaterialRequest {
@@ -456,6 +486,9 @@ model MaterialRequest {
   updatedAt    DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([healthStatus])
 }
 
 model PurchaseOrder {
@@ -472,6 +505,9 @@ model PurchaseOrder {
   updatedAt        DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([healthStatus])
 }
 
 model Asset {
@@ -486,4 +522,7 @@ model Asset {
   updatedAt    DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([healthStatus])
 }
