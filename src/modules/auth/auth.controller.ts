@@ -15,6 +15,10 @@ export class AuthController {
   @Post("login") login(@Body() dto: LoginDto) {
     return this.service.login(dto);
   }
+  @Post('admin/login')
+    adminLogin(@Body() loginDto: LoginDto) {
+  return this.service.adminLogin(loginDto);
+  }
   @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Get("me") me(
     @CurrentUser() user: any,
   ) {
