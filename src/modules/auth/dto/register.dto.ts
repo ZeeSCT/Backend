@@ -1,7 +1,11 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEmail,IsEnum, IsOptional, IsString, MinLength } from "class-validator";
+import { UserRole } from "@prisma/client";
+
 export class RegisterDto {
-  @ApiProperty({ example: "" }) @IsString() name!: string;
+  @ApiProperty({ example: "" }) 
+  @IsString() 
+  name!: string;
   @ApiProperty({ example: "" })
   @IsEmail()
   email!: string;
@@ -12,5 +16,5 @@ export class RegisterDto {
   @ApiProperty({ example: "PROJECT_MANAGER", required: false })
   @IsOptional()
   @IsString()
-  role?: string;
+  role?: UserRole;
 }

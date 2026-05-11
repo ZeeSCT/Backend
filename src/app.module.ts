@@ -25,6 +25,7 @@ import { RevenueBillingModule } from './modules/executive/revenue-billing/revenu
     PortfolioOverviewModule,
     ExecutiveModule,
     RevenueBillingModule,
+    UsersModule,
     ProjectsModule,
     TendersModule,
     PlanningModule,
