@@ -14,6 +14,8 @@ import { ProcurementModule } from './modules/procurement/procurement.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ScreenCatalogModule } from './modules/screen-catalog/screen-catalog.module';
 import { RevenueBillingModule } from './modules/executive/revenue-billing/revenue-billing.module';
+import { SchedulesModule } from "./modules/schedules/schedules.module";
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -21,6 +23,7 @@ import { RevenueBillingModule } from './modules/executive/revenue-billing/revenu
     AuthModule,
     UsersModule,
     ScreenCatalogModule,
+    SchedulesModule,
     DashboardModule,
     PortfolioOverviewModule,
     ExecutiveModule,

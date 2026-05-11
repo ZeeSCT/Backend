@@ -61,6 +61,51 @@ enum TenderStage {
   NO_BID
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * SCHEDULE IMPORT ENUMS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
+enum ScheduleUploadStatus {
+  PROCESSING
+  VALIDATED
+  IMPORTED
+  FAILED
+  PARTIAL
+}
+
+enum ActivityStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+  BLOCKED
+  ON_HOLD
+}
+
+enum ResourceType {
+  PERSON
+  EQUIPMENT
+  MATERIAL
+  TEAM
+  VENDOR
+}
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * USERS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -72,13 +117,56 @@ model User {
   updatedAt    DateTime @updatedAt
 
   managedProjects Project[] @relation("ProjectManager")
+
+  // Schedule uploads performed by this user
+  scheduleUploads ProjectScheduleUpload[] @relation("ScheduleUploadUser")
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * OPTIONAL CLIENT MASTER
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
+model Client {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  email       String?
+  phone       String?
+  address     String?
+  contactName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projects Project[]
+
+  @@index([name])
+}
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * PROJECT
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model Project {
   id         String @id @default(cuid())
   code       String @unique
   name       String
   clientName String
+
+  // Optional proper client relation.
+  // Kept optional so existing project records do not break.
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   // Keep this for now because your existing data/API may already use it.
   // Store values like: its, traffic, its-maint, traffic-maint
@@ -106,7 +194,13 @@ model Project {
   plannedStart   DateTime?
   plannedFinish  DateTime?
   forecastFinish DateTime?
-  status         RecordStatus @default(ACTIVE)
+
+  // Contract dates from your schedule/project ERD.
+  // Optional so existing data does not break.
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+
+  status RecordStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -128,11 +222,29 @@ model Project {
   invoices Invoice[]
   billing  ProjectBilling? @relation("ProjectBillingRelation")
 
+  // Schedule upload / imported WBS structure
+  scheduleUploads             ProjectScheduleUpload[]
+  wbsItems                    WbsItem[]
+  scheduleActivities          ScheduleActivity[]
+  scheduleMilestones          Milestone[]
+  scheduleResourceAssignments ActivityResourceAssignment[]
+
+  @@index([clientId])
   @@index([portfolio])
   @@index([portfolioCategoryId])
   @@index([status])
   @@index([healthStatus])
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * PORTFOLIO CATEGORY
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model PortfolioCategory {
   id           String  @id @default(uuid())
@@ -150,6 +262,295 @@ model PortfolioCategory {
   @@index([code])
   @@index([isActive])
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * SCHEDULE UPLOAD / IMPORT MODELS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
+model ProjectScheduleUpload {
+  id String @id @default(cuid())
+
+  projectId String
+  fileName  String
+
+  // Revision number per project.
+  // Example: PRJ-001 revision 1, revision 2, revision 3.
+  revisionNo Int
+
+  uploadedById String?
+  uploadedAt   DateTime @default(now())
+
+  status ScheduleUploadStatus @default(PROCESSING)
+
+  totalRows Int @default(0)
+  validRows Int @default(0)
+  errorRows Int @default(0)
+
+  sheetName  String?
+  fileSize   Int?
+  importedAt DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  uploadedBy User? @relation("ScheduleUploadUser", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  wbsItems   WbsItem[]
+  activities ScheduleActivity[]
+  milestones Milestone[]
+  errors     ScheduleImportError[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, revisionNo])
+  @@index([projectId])
+  @@index([uploadedById])
+  @@index([status])
+  @@index([uploadedAt])
+}
+
+model WbsItem {
+  id String @id @default(cuid())
+
+  projectId String
+  uploadId  String
+
+  parentId String?
+
+  wbsCode  String
+  wbsLevel Int?
+  name     String
+
+  startDate  DateTime?
+  finishDate DateTime?
+  duration   Int?
+  totalFloat Int?
+
+  // Original Excel row number for traceability
+  rowNumber Int?
+
+  project Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  upload  ProjectScheduleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  parent   WbsItem?  @relation("WbsHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children WbsItem[] @relation("WbsHierarchy")
+
+  activities ScheduleActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // WBS code can repeat across different uploads/revisions.
+  // Therefore uniqueness must be per upload, not per project.
+  @@unique([uploadId, wbsCode])
+  @@index([projectId])
+  @@index([uploadId])
+  @@index([parentId])
+  @@index([wbsCode])
+  @@index([wbsLevel])
+}
+
+model ScheduleActivity {
+  id String @id @default(cuid())
+
+  projectId String
+  uploadId  String
+  wbsItemId String?
+
+  activityCode String
+  activityName String
+
+  duration   Int?
+  startDate  DateTime?
+  finishDate DateTime?
+  totalFloat Int?
+
+  isMilestone Boolean @default(false)
+  isCritical  Boolean @default(false)
+
+  status ActivityStatus @default(NOT_STARTED)
+
+  // Original Excel row number for traceability
+  rowNumber Int?
+
+  project Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  upload  ProjectScheduleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  wbsItem WbsItem? @relation(fields: [wbsItemId], references: [id], onDelete: SetNull)
+
+  milestone Milestone?
+
+  resourceAssignments ActivityResourceAssignment[]
+  statusUpdates       ActivityStatusUpdate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Activity code can repeat across schedule revisions.
+  @@unique([uploadId, activityCode])
+  @@index([projectId])
+  @@index([uploadId])
+  @@index([wbsItemId])
+  @@index([activityCode])
+  @@index([status])
+  @@index([isMilestone])
+  @@index([isCritical])
+  @@index([startDate])
+  @@index([finishDate])
+}
+
+model Milestone {
+  id String @id @default(cuid())
+
+  projectId  String
+  uploadId   String
+  activityId String @unique
+
+  milestoneCode String
+  name          String
+
+  plannedDate DateTime?
+  actualDate  DateTime?
+
+  status ActivityStatus @default(NOT_STARTED)
+
+  project  Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  upload   ProjectScheduleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  activity ScheduleActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Milestone code can repeat across schedule revisions.
+  @@unique([uploadId, milestoneCode])
+  @@index([projectId])
+  @@index([uploadId])
+  @@index([status])
+  @@index([plannedDate])
+}
+
+model ScheduleImportError {
+  id String @id @default(cuid())
+
+  uploadId String
+
+  sheetName    String?
+  rowNumber    Int
+  columnName   String?
+  errorMessage String
+  rawValue     String?
+
+  upload ProjectScheduleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([uploadId])
+  @@index([rowNumber])
+  @@index([columnName])
+}
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * RESOURCE / FIELD EXECUTION MODELS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
+model Resource {
+  id String @id @default(cuid())
+
+  name String
+  type ResourceType @default(PERSON)
+
+  discipline  String?
+  designation String?
+  email       String?
+  phone       String?
+
+  isActive Boolean @default(true)
+
+  activityAssignments ActivityResourceAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([discipline])
+  @@index([isActive])
+  @@index([email])
+}
+
+model ActivityResourceAssignment {
+  id String @id @default(cuid())
+
+  projectId  String
+  activityId String
+  resourceId String
+
+  allocation   Float?
+  quantity     Float?
+  unit         String?
+  plannedHours Float?
+  actualHours  Float?
+
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activity ScheduleActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  resource Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([activityId, resourceId])
+  @@index([projectId])
+  @@index([activityId])
+  @@index([resourceId])
+}
+
+model ActivityStatusUpdate {
+  id String @id @default(cuid())
+
+  scheduleActivityId String
+
+  status             ActivityStatus
+  progressPercentage Float?
+  remarks            String?
+
+  uploadedFileUrl  String?
+  uploadedFileName String?
+  uploadedFileType String?
+
+  // Keep as string for now to avoid forcing a User relation.
+  // Later you can change this to updatedById + User relation.
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  scheduleActivity ScheduleActivity @relation(fields: [scheduleActivityId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleActivityId])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * INVOICING
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model Invoice {
   id        String @id @default(cuid())
@@ -202,6 +603,16 @@ model ProjectBilling {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * LOOKUPS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model DocumentationStageLookup {
   id           String  @id @default(cuid())
@@ -285,6 +696,16 @@ model ActivitySeverityLookup {
   @@index([displayOrder])
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * TENDERS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model Tender {
   id                 String       @id @default(cuid())
   refNo              String       @unique
@@ -309,6 +730,16 @@ model Tender {
   @@index([stage])
   @@index([status])
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * DOCUMENTATION / PLANNING
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model PlanningDocument {
   id        String @id @default(cuid())
@@ -433,6 +864,16 @@ model PlanningResource {
   @@index([healthStatus])
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * QA/QC
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model Inspection {
   id             String       @id @default(cuid())
   refNo          String       @unique
@@ -472,6 +913,16 @@ model Ncr {
   @@index([healthStatus])
 }
 
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * PROCUREMENT / MATERIALS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
 model MaterialRequest {
   id           String       @id @default(cuid())
   refNo        String       @unique
@@ -509,6 +960,16 @@ model PurchaseOrder {
   @@index([projectId])
   @@index([healthStatus])
 }
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * ASSETS
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
 
 model Asset {
   id           String       @id @default(cuid())

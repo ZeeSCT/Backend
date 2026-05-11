@@ -40,7 +40,7 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     return this.response(user);
   }
-async adminLogin(dto: LoginDto) {
+  async adminLogin(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email.trim().toLowerCase() },
     });
@@ -62,7 +62,6 @@ async adminLogin(dto: LoginDto) {
 
     return this.response(user);
   }
-
   async response(user: any) {
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
@@ -80,6 +79,5 @@ async adminLogin(dto: LoginDto) {
         role: user.role,
       },
     };
-    
   }
 }
