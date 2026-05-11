@@ -28,6 +28,7 @@ import { SchedulesModule } from "./modules/schedules/schedules.module";
     PortfolioOverviewModule,
     ExecutiveModule,
     RevenueBillingModule,
+    UsersModule,
     ProjectsModule,
     TendersModule,
     PlanningModule,
