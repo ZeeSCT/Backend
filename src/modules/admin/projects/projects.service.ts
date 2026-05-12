@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { RecordStatus } from "@prisma/client";
+import { RecordStatus, UserRole } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 
@@ -140,7 +140,7 @@ export class ProjectsService {
       where: {
         isActive: true,
         role: {
-          in: ["PROJECT_MANAGER", "ADMIN", "SUPER_ADMIN"],
+          in: [UserRole.PROJECT_MANAGER, UserRole.ADMIN, UserRole.SUPER_ADMIN],
         },
       },
       orderBy: {
