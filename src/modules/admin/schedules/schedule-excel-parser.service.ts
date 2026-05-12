@@ -60,8 +60,20 @@ export class ScheduleExcelParserService {
       };
     }
 
+    /**
+     * This stack is the important fix.
+     *
+     * Instead of relying on one currentLeafWbs variable, we keep the latest WBS
+     * row seen at each level.
+     *
+     * Example:
+     * Level 2: 2 GENERAL
+     * Level 3: 2.5 CONTRACT
+     *
+     * Activities after 2.5 will be linked to 2.5 until another WBS row changes
+     * the stack.
+     */
     const latestWbsByLevel = new Map<number, ParsedWbsItem>();
-    let currentLeafWbs: ParsedWbsItem | null = null;
 
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
@@ -91,12 +103,28 @@ export class ScheduleExcelParserService {
       const activityCodeLooksValid =
         this.looksLikeActivityCode(activityCodeCandidate);
 
+      /**
+       * Important fix:
+       *
+       * A WBS row should be identified by:
+       * - valid WBS Level
+       * - valid WBS code like 1, 1.3, 2.5, 3.2.1
+       *
+       * We should not reject it just because some shifted export placed text
+       * in the Activity ID column.
+       *
+       * This is what prevents rows like:
+       * 2    2      GENERAL
+       * 3    2.5    CONTRACT
+       *
+       * from being skipped.
+       */
       const isWbsRow =
         wbsLevel !== null &&
         wbsCode.length > 0 &&
-        !activityCodeLooksValid;
+        this.looksLikeWbsCode(wbsCode);
 
-      const isActivityRow = activityCodeLooksValid;
+      const isActivityRow = !isWbsRow && activityCodeLooksValid;
 
       /**
        * Many Primavera/MS Project exports contain title, blank, spacing,
@@ -115,10 +143,6 @@ export class ScheduleExcelParserService {
       if (isWbsRow) {
         const rowErrors: ParsedImportError[] = [];
 
-        /**
-         * Do not reject WBS rows if the name is shifted/missing.
-         * Use a safe fallback so the hierarchy can still be created.
-         */
         const wbsName = activityName || `WBS ${wbsCode}`;
 
         if (duration !== null && duration < 0) {
@@ -162,15 +186,25 @@ export class ScheduleExcelParserService {
 
         wbsItems.push(wbsItem);
 
+        /**
+         * Important fix:
+         *
+         * When a new WBS row is encountered, clear any deeper WBS levels.
+         *
+         * Example:
+         * Existing stack:
+         * level 2 -> 1.3
+         * level 3 -> 1.3.3
+         *
+         * New row:
+         * level 2 -> 2 GENERAL
+         *
+         * Then level 3 and below must be cleared, otherwise activities below
+         * GENERAL may remain attached to old 1.3.3.
+         */
+        this.clearDeeperWbsLevels(latestWbsByLevel, wbsLevel);
         latestWbsByLevel.set(wbsLevel, wbsItem);
 
-        for (const existingLevel of Array.from(latestWbsByLevel.keys())) {
-          if (existingLevel > wbsLevel) {
-            latestWbsByLevel.delete(existingLevel);
-          }
-        }
-
-        currentLeafWbs = wbsItem;
         return;
       }
 
@@ -194,11 +228,6 @@ export class ScheduleExcelParserService {
           });
         }
 
-        /**
-         * Some milestone rows have only Finish date.
-         * Some normal activity rows may have both Start and Finish.
-         * Require at least one date instead of requiring Finish only.
-         */
         if (!startDate && !finishDate) {
           rowErrors.push({
             rowNumber,
@@ -217,7 +246,9 @@ export class ScheduleExcelParserService {
           });
         }
 
-        if (!currentLeafWbs) {
+        const parentWbs = this.getCurrentLeafWbs(latestWbsByLevel);
+
+        if (!parentWbs) {
           rowErrors.push({
             rowNumber,
             columnName: "WBS code",
@@ -231,14 +262,25 @@ export class ScheduleExcelParserService {
           return;
         }
 
-        const isMilestone =
-          duration === 0 || activityCode.toUpperCase().startsWith("MS-");
+        /**
+         * Important fix:
+         *
+         * Do not classify milestone using:
+         * activityCode.startsWith("MS-")
+         *
+         * Some real activities can have an MS-* code convention.
+         */
+        const isMilestone = this.detectMilestone({
+          duration,
+          startDate,
+          finishDate,
+        });
 
         const isCritical = totalFloat !== null && totalFloat <= 0;
 
         const parsedActivity: ParsedScheduleActivity = {
           rowNumber,
-          parentWbsTempKey: currentLeafWbs?.tempKey ?? null,
+          parentWbsTempKey: parentWbs?.tempKey ?? null,
           activityCode,
           activityName,
           duration,
@@ -316,6 +358,69 @@ export class ScheduleExcelParserService {
     if (nearestLevel === undefined) return null;
 
     return latestWbsByLevel.get(nearestLevel) ?? null;
+  }
+
+  private getCurrentLeafWbs(
+    latestWbsByLevel: Map<number, ParsedWbsItem>,
+  ): ParsedWbsItem | null {
+    const levels = Array.from(latestWbsByLevel.keys()).sort((a, b) => b - a);
+
+    const deepestLevel = levels[0];
+
+    if (deepestLevel === undefined) return null;
+
+    return latestWbsByLevel.get(deepestLevel) ?? null;
+  }
+
+  private clearDeeperWbsLevels(
+    latestWbsByLevel: Map<number, ParsedWbsItem>,
+    currentLevel: number,
+  ) {
+    for (const existingLevel of Array.from(latestWbsByLevel.keys())) {
+      if (existingLevel > currentLevel) {
+        latestWbsByLevel.delete(existingLevel);
+      }
+    }
+  }
+
+  private detectMilestone(params: {
+    duration: number | null;
+    startDate: Date | null;
+    finishDate: Date | null;
+  }): boolean {
+    const { duration, startDate, finishDate } = params;
+
+    /**
+     * No activity-code prefix logic here.
+     *
+     * Typical imported milestone pattern:
+     * - duration is 0
+     * - has one date
+     * - finish may be blank
+     *
+     * Example:
+     * Project Start, Award of Contract.
+     */
+    if (duration !== 0) {
+      return false;
+    }
+
+    const hasStart = Boolean(startDate);
+    const hasFinish = Boolean(finishDate);
+
+    if (hasStart && !hasFinish) {
+      return true;
+    }
+
+    if (!hasStart && hasFinish) {
+      return true;
+    }
+
+    if (startDate && finishDate) {
+      return startDate.getTime() === finishDate.getTime();
+    }
+
+    return false;
   }
 
   private validateDuplicateActivities(
@@ -431,7 +536,7 @@ export class ScheduleExcelParserService {
   }
 
   private parseInteger(value: string): number | null {
-    const cleaned = value.replace(/,/g, "").trim();
+    const cleaned = value.replace(/,/g, "").replace(/\*/g, "").trim();
 
     if (!cleaned) return null;
 
@@ -469,7 +574,16 @@ export class ScheduleExcelParserService {
       }
     }
 
-    const raw = String(value).trim();
+    /**
+     * Important fix:
+     *
+     * Primavera dates can be like:
+     * 28-Sep-27*
+     *
+     * The star usually indicates constraint/actual/schedule annotation.
+     * Remove it before parsing.
+     */
+    const raw = String(value).replace(/\*/g, "").trim();
 
     if (!raw) return null;
 
@@ -547,6 +661,12 @@ export class ScheduleExcelParserService {
     return new Date(utcValue * 1000);
   }
 
+  private looksLikeWbsCode(value: string): boolean {
+    const cleaned = value.trim();
+
+    return /^\d+(\.\d+)*$/.test(cleaned);
+  }
+
   private looksLikeActivityCode(value: string): boolean {
     const cleaned = value.trim();
 
@@ -560,7 +680,7 @@ export class ScheduleExcelParserService {
      * 1.1
      * 3.2.3.1.1.1
      */
-    if (/^\d+(\.\d+)*$/.test(cleaned)) {
+    if (this.looksLikeWbsCode(cleaned)) {
       return false;
     }
 
@@ -706,7 +826,7 @@ export class ScheduleExcelParserService {
     /**
      * Do not use WBS codes as names.
      */
-    if (/^\d+(\.\d+)*$/.test(cleaned)) {
+    if (this.looksLikeWbsCode(cleaned)) {
       return false;
     }
 
@@ -714,7 +834,7 @@ export class ScheduleExcelParserService {
   }
 
   private looksLikeNumber(value: string): boolean {
-    const cleaned = value.replace(/,/g, "").trim();
+    const cleaned = value.replace(/,/g, "").replace(/\*/g, "").trim();
 
     if (!cleaned) {
       return false;
