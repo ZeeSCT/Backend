@@ -503,6 +503,10 @@ model ActivityResourceAssignment {
   plannedHours Float?
   actualHours  Float?
 
+  plannedStart  DateTime?
+  plannedFinish DateTime?
+  remarks       String?
+
   project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activity ScheduleActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   resource Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
@@ -514,6 +518,8 @@ model ActivityResourceAssignment {
   @@index([projectId])
   @@index([activityId])
   @@index([resourceId])
+  @@index([plannedStart])
+  @@index([plannedFinish])
 }
 
 model ActivityStatusUpdate {
