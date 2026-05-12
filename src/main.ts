@@ -14,7 +14,16 @@ async function bootstrap() {
     origin: corsOrigins,
     credentials: true,
   });
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
   const config = new DocumentBuilder()
     .setTitle("Scientechnic Unified Platform API")
     .setDescription("Dashboard backend APIs")
