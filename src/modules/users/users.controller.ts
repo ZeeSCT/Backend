@@ -14,10 +14,11 @@ import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 
 import { UsersService } from "./users.service";
 import { CreateUserDto } from "./dto/create-user.dto";
+import { SuperAdminGuard } from "@/common/guards/super-admin.guard";
 
 @ApiTags("Users")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, SuperAdminGuard)
 @Controller("api/v1/users")
 export class UsersController {
   constructor(private service: UsersService) {}
