@@ -112,7 +112,7 @@ model User {
   email        String   @unique
   passwordHash String
   role         UserRole @default(ENGINEER)
-  department    String?
+  department   String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -602,7 +602,7 @@ model ProjectBilling {
   overdueReceivables Decimal? @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @updatedAt @default(now())
 }
 
 /**
@@ -695,6 +695,72 @@ model ActivitySeverityLookup {
   @@index([code])
   @@index([isActive])
   @@index([displayOrder])
+}
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * Roles&Permissions
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
+model RolePermission {
+  id String @id @default(cuid())
+
+  role UserRole @unique
+
+  adminView   Boolean @default(false)
+  adminCreate Boolean @default(false)
+  adminEdit   Boolean @default(false)
+  adminDelete Boolean @default(false)
+
+  executiveDashboardView Boolean @default(false)
+
+  pmDashboardView Boolean @default(false)
+
+  projectView   Boolean @default(false)
+  projectCreate Boolean @default(false)
+  projectEdit   Boolean @default(false)
+  projectDelete Boolean @default(false)
+
+  planningView   Boolean @default(false)
+  planningCreate Boolean @default(false)
+  planningEdit   Boolean @default(false)
+  planningDelete Boolean @default(false)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([isActive])
+}
+
+/**
+ * --------------------------------------------------------------------------
+ */
+/**
+ * SystemSetting
+ */
+/**
+ * --------------------------------------------------------------------------
+ */
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  value       String
+  category    String
+  status      String   @default("Active")
+  description String?
+  isEditable  Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 /**

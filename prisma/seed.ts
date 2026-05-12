@@ -1366,6 +1366,50 @@ async function main() {
     console.log("Invoices seeded.");
   }
 
+
+
+
+
+
+  await prisma.systemSetting.upsert({
+  where: { key: "jwt_expiry" },
+  update: {},
+  create: {
+    key: "jwt_expiry",
+    label: "JWT Expiry",
+    value: "1 day",
+    category: "Security",
+    status: "Active",
+    description: "Authentication token expiry duration",
+  },
+});
+
+await prisma.systemSetting.upsert({
+  where: { key: "excel_upload_max_size" },
+  update: {},
+  create: {
+    key: "excel_upload_max_size",
+    label: "Excel Upload Max Size",
+    value: "25MB",
+    category: "Planning",
+    status: "Active",
+    description: "Maximum upload size for planning Excel files",
+  },
+});
+
+await prisma.systemSetting.upsert({
+  where: { key: "cors_origin" },
+  update: {},
+  create: {
+    key: "cors_origin",
+    label: "CORS Origin",
+    value: "http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:3005",
+    category: "Security",
+    status: "Pending",
+    description: "Allowed frontend origin",
+  },
+});
+
   /* ---------------------------------- */
   /* PROJECTS */
   /* ---------------------------------- */
