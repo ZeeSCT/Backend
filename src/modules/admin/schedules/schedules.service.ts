@@ -590,4 +590,51 @@ export class SchedulesService {
 
     return upload;
   }
+  async deleteUpload(uploadId: string) {
+  const upload = await this.prisma.projectScheduleUpload.findUnique({
+    where: {
+      id: uploadId,
+    },
+    select: {
+      id: true,
+      fileName: true,
+      revisionNo: true,
+      project: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+      _count: {
+        select: {
+          wbsItems: true,
+          activities: true,
+          milestones: true,
+          errors: true,
+        },
+      },
+    },
+  });
+
+  if (!upload) {
+    throw new NotFoundException(`Schedule upload "${uploadId}" not found.`);
+  }
+
+  await this.prisma.projectScheduleUpload.delete({
+    where: {
+      id: uploadId,
+    },
+  });
+
+  return {
+    success: true,
+    message: "Schedule upload deleted successfully.",
+    uploadId: upload.id,
+    fileName: upload.fileName,
+    revisionNo: upload.revisionNo,
+    project: upload.project,
+    deletedCounts: upload._count,
+  };
+}
 }
