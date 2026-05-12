@@ -3,6 +3,7 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Param,
@@ -168,5 +169,14 @@ export class SchedulesController {
   @ApiParam({ name: "uploadId", required: true })
   async getErrors(@Param("uploadId") uploadId: string) {
     return this.schedulesService.getErrors(uploadId);
+  }
+
+  @Delete("uploads/:uploadId")
+  @ApiOperation({
+    summary: "Delete schedule upload and imported schedule data",
+  })
+  @ApiParam({ name: "uploadId", required: true })
+  async deleteUpload(@Param("uploadId") uploadId: string) {
+    return this.schedulesService.deleteUpload(uploadId);
   }
 }
