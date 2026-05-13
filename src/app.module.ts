@@ -17,6 +17,7 @@ import { RevenueBillingModule } from './modules/executive/revenue-billing/revenu
 import { SchedulesModule } from "./modules/schedules/schedules.module";
 import { RolePermissionsModule } from "./modules/admin/Access Control/Roles&Permission/roles.module";
 import { SystemSettingsModule } from "./modules/admin/Systemsetting/system-settings.module";
+import { MaterialResourceModule } from "./modules/projects/material-resource/module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -37,7 +38,8 @@ import { SystemSettingsModule } from "./modules/admin/Systemsetting/system-setti
     ProcurementModule,
     MaintenanceModule,
     RolePermissionsModule,
-    SystemSettingsModule,
+    MaterialResourceModule,
+    
   ],
 })
 export class AppModule {}

@@ -1663,10 +1663,101 @@ await prisma.systemSetting.upsert({
       },
     ],
   });
+async function seedMaterialResource() {
+  const materialResourceData = [
+    {
+      projectCode: "PRJ-001",
+      resources: [
+        { resourceRole: "HVAC", resourceName: "GI ductwork - flat oval", plannedQty: 240, availableQty: 115, requiredDate: d("2026-05-18"), healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Civil", resourceName: "Rebar - 16mm", plannedQty: 240, availableQty: 0, requiredDate: d("2026-05-20"), healthStatus: HealthStatus.CRITICAL },
+        { resourceRole: "Insulation", resourceName: "Duct insulation wrap", plannedQty: 320, availableQty: 260, requiredDate: d("2026-05-17"), healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Plumbing", resourceName: "HDPE pipe - 110mm", plannedQty: 180, availableQty: 180, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "Electrical", resourceName: "Copper cable - 6mm2", plannedQty: 600, availableQty: 420, requiredDate: d("2026-05-19"), healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Fire Fighting", resourceName: "Sprinkler heads - 68C", plannedQty: 220, availableQty: 0, requiredDate: d("2026-05-22"), healthStatus: HealthStatus.CRITICAL },
+        { resourceRole: "Electrical", resourceName: "Conduit - 25mm", plannedQty: 400, availableQty: 400, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "BMS", resourceName: "BMS sensors", plannedQty: 48, availableQty: 48, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
 
+        { resourceRole: "HVAC technicians", resourceName: "HVAC technicians", plannedQty: 8, availableQty: 8, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "Electricians", resourceName: "Electrical crew", plannedQty: 6, availableQty: 4, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Plumbers", resourceName: "Plumbing crew", plannedQty: 5, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "Civil crew", resourceName: "Civil / structural team", plannedQty: 10, availableQty: 6, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
+      ],
+    },
+    {
+      projectCode: "PRJ-003",
+      resources: [
+        { resourceRole: "Traffic Signal", resourceName: "Signal poles - 8m", plannedQty: 24, availableQty: 16, requiredDate: d("2026-05-21"), healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Electrical", resourceName: "Armoured cable - 4C x 16mm2", plannedQty: 1200, availableQty: 700, requiredDate: d("2026-05-23"), healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Controller Cabinet", resourceName: "Traffic controller cabinets", plannedQty: 8, availableQty: 0, requiredDate: d("2026-05-25"), healthStatus: HealthStatus.CRITICAL },
+        { resourceRole: "Civil", resourceName: "Precast foundation blocks", plannedQty: 24, availableQty: 24, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+
+        { resourceRole: "Electricians", resourceName: "Signal electrical crew", plannedQty: 8, availableQty: 7, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Technicians", resourceName: "Signal testing technicians", plannedQty: 5, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "Civil crew", resourceName: "Foundation civil team", plannedQty: 12, availableQty: 10, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
+      ],
+    },
+    {
+      projectCode: "PRJ-004",
+      resources: [
+        { resourceRole: "Road Marking", resourceName: "Thermoplastic road marking paint", plannedQty: 900, availableQty: 900, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "Road Marking", resourceName: "Glass beads", plannedQty: 350, availableQty: 240, requiredDate: d("2026-05-16"), healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Signage", resourceName: "Temporary diversion signs", plannedQty: 75, availableQty: 75, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+
+        { resourceRole: "Road marking crew", resourceName: "Road marking crew", plannedQty: 14, availableQty: 14, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "Safety crew", resourceName: "Traffic safety marshals", plannedQty: 6, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
+      ],
+    },
+    {
+      projectCode: "PRJ-005",
+      resources: [
+        { resourceRole: "CCTV", resourceName: "IP CCTV cameras", plannedQty: 64, availableQty: 52, requiredDate: d("2026-05-18"), healthStatus: HealthStatus.AT_RISK },
+        { resourceRole: "Network", resourceName: "PoE network switches", plannedQty: 12, availableQty: 0, requiredDate: d("2026-05-24"), healthStatus: HealthStatus.CRITICAL },
+        { resourceRole: "Fiber", resourceName: "Fiber patch cords", plannedQty: 180, availableQty: 180, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+
+        { resourceRole: "CCTV technicians", resourceName: "CCTV installation team", plannedQty: 7, availableQty: 7, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+        { resourceRole: "Network engineers", resourceName: "Network configuration team", plannedQty: 3, availableQty: 2, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
+      ],
+    },
+  ];
+
+  for (const item of materialResourceData) {
+    const project = await prisma.project.findUnique({
+      where: { code: item.projectCode },
+    });
+
+    if (!project) {
+      throw new Error(
+        `Cannot seed material/resource: project ${item.projectCode} not found`,
+      );
+    }
+
+    await prisma.planningResource.deleteMany({
+      where: { projectId: project.id },
+    });
+
+    await prisma.planningResource.createMany({
+      data: item.resources.map((resource) => ({
+        projectId: project.id,
+        documentId: null,
+        activityId: null,
+        resourceRole: resource.resourceRole,
+        resourceName: resource.resourceName,
+        plannedQty: resource.plannedQty,
+        availableQty: resource.availableQty,
+        requiredDate: resource.requiredDate,
+        healthStatus: resource.healthStatus,
+      })),
+    });
+  }
+
+  console.log("Material and resource data seeded.");
+}
+
+  
   await seedDocumentationStatusRecords();
   await seedRevenueBilling();
   await seedInvoices();
+  await seedMaterialResource();
 
   console.log("Seed completed successfully.");
 }
