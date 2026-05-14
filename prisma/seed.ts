@@ -605,8 +605,7 @@ async function main() {
         },
       });
 
-      const approvalStatusCode =
-        doc.approvalStatusCode ?? "in-preparation";
+      const approvalStatusCode = doc.approvalStatusCode ?? "in-preparation";
 
       const documentData = {
         planType: doc.planType ?? "BASELINE",
@@ -1366,49 +1365,45 @@ async function main() {
     console.log("Invoices seeded.");
   }
 
-
-
-
-
+  await prisma.systemSetting.upsert({
+    where: { key: "jwt_expiry" },
+    update: {},
+    create: {
+      key: "jwt_expiry",
+      label: "JWT Expiry",
+      value: "1 day",
+      category: "Security",
+      status: "Active",
+      description: "Authentication token expiry duration",
+    },
+  });
 
   await prisma.systemSetting.upsert({
-  where: { key: "jwt_expiry" },
-  update: {},
-  create: {
-    key: "jwt_expiry",
-    label: "JWT Expiry",
-    value: "1 day",
-    category: "Security",
-    status: "Active",
-    description: "Authentication token expiry duration",
-  },
-});
+    where: { key: "excel_upload_max_size" },
+    update: {},
+    create: {
+      key: "excel_upload_max_size",
+      label: "Excel Upload Max Size",
+      value: "25MB",
+      category: "Planning",
+      status: "Active",
+      description: "Maximum upload size for planning Excel files",
+    },
+  });
 
-await prisma.systemSetting.upsert({
-  where: { key: "excel_upload_max_size" },
-  update: {},
-  create: {
-    key: "excel_upload_max_size",
-    label: "Excel Upload Max Size",
-    value: "25MB",
-    category: "Planning",
-    status: "Active",
-    description: "Maximum upload size for planning Excel files",
-  },
-});
-
-await prisma.systemSetting.upsert({
-  where: { key: "cors_origin" },
-  update: {},
-  create: {
-    key: "cors_origin",
-    label: "CORS Origin",
-    value: "http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:3005",
-    category: "Security",
-    status: "Pending",
-    description: "Allowed frontend origin",
-  },
-});
+  await prisma.systemSetting.upsert({
+    where: { key: "cors_origin" },
+    update: {},
+    create: {
+      key: "cors_origin",
+      label: "CORS Origin",
+      value:
+        "http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:3005",
+      category: "Security",
+      status: "Pending",
+      description: "Allowed frontend origin",
+    },
+  });
 
   /* ---------------------------------- */
   /* PROJECTS */
@@ -1663,101 +1658,537 @@ await prisma.systemSetting.upsert({
       },
     ],
   });
-async function seedMaterialResource() {
-  const materialResourceData = [
-    {
-      projectCode: "PRJ-001",
-      resources: [
-        { resourceRole: "HVAC", resourceName: "GI ductwork - flat oval", plannedQty: 240, availableQty: 115, requiredDate: d("2026-05-18"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Civil", resourceName: "Rebar - 16mm", plannedQty: 240, availableQty: 0, requiredDate: d("2026-05-20"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Insulation", resourceName: "Duct insulation wrap", plannedQty: 320, availableQty: 260, requiredDate: d("2026-05-17"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Plumbing", resourceName: "HDPE pipe - 110mm", plannedQty: 180, availableQty: 180, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Electrical", resourceName: "Copper cable - 6mm2", plannedQty: 600, availableQty: 420, requiredDate: d("2026-05-19"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Fire Fighting", resourceName: "Sprinkler heads - 68C", plannedQty: 220, availableQty: 0, requiredDate: d("2026-05-22"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Electrical", resourceName: "Conduit - 25mm", plannedQty: 400, availableQty: 400, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "BMS", resourceName: "BMS sensors", plannedQty: 48, availableQty: 48, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
 
-        { resourceRole: "HVAC technicians", resourceName: "HVAC technicians", plannedQty: 8, availableQty: 8, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Electricians", resourceName: "Electrical crew", plannedQty: 6, availableQty: 4, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Plumbers", resourceName: "Plumbing crew", plannedQty: 5, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Civil crew", resourceName: "Civil / structural team", plannedQty: 10, availableQty: 6, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
-    },
-    {
-      projectCode: "PRJ-003",
-      resources: [
-        { resourceRole: "Traffic Signal", resourceName: "Signal poles - 8m", plannedQty: 24, availableQty: 16, requiredDate: d("2026-05-21"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Electrical", resourceName: "Armoured cable - 4C x 16mm2", plannedQty: 1200, availableQty: 700, requiredDate: d("2026-05-23"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Controller Cabinet", resourceName: "Traffic controller cabinets", plannedQty: 8, availableQty: 0, requiredDate: d("2026-05-25"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Civil", resourceName: "Precast foundation blocks", plannedQty: 24, availableQty: 24, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
+  async function seedMaterialResourceLookups() {
+    const resourceCategories = [
+      { code: "material", label: "Material", displayOrder: 1 },
+      { code: "labour", label: "Labour", displayOrder: 2 },
+    ];
 
-        { resourceRole: "Electricians", resourceName: "Signal electrical crew", plannedQty: 8, availableQty: 7, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Technicians", resourceName: "Signal testing technicians", plannedQty: 5, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Civil crew", resourceName: "Foundation civil team", plannedQty: 12, availableQty: 10, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
-    },
-    {
-      projectCode: "PRJ-004",
-      resources: [
-        { resourceRole: "Road Marking", resourceName: "Thermoplastic road marking paint", plannedQty: 900, availableQty: 900, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Road Marking", resourceName: "Glass beads", plannedQty: 350, availableQty: 240, requiredDate: d("2026-05-16"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Signage", resourceName: "Temporary diversion signs", plannedQty: 75, availableQty: 75, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-
-        { resourceRole: "Road marking crew", resourceName: "Road marking crew", plannedQty: 14, availableQty: 14, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Safety crew", resourceName: "Traffic safety marshals", plannedQty: 6, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
-    },
-    {
-      projectCode: "PRJ-005",
-      resources: [
-        { resourceRole: "CCTV", resourceName: "IP CCTV cameras", plannedQty: 64, availableQty: 52, requiredDate: d("2026-05-18"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Network", resourceName: "PoE network switches", plannedQty: 12, availableQty: 0, requiredDate: d("2026-05-24"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Fiber", resourceName: "Fiber patch cords", plannedQty: 180, availableQty: 180, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-
-        { resourceRole: "CCTV technicians", resourceName: "CCTV installation team", plannedQty: 7, availableQty: 7, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Network engineers", resourceName: "Network configuration team", plannedQty: 3, availableQty: 2, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
-    },
-  ];
-
-  for (const item of materialResourceData) {
-    const project = await prisma.project.findUnique({
-      where: { code: item.projectCode },
-    });
-
-    if (!project) {
-      throw new Error(
-        `Cannot seed material/resource: project ${item.projectCode} not found`,
-      );
+    for (const item of resourceCategories) {
+      await prisma.resourceCategoryLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: item,
+      });
     }
 
-    await prisma.planningResource.deleteMany({
-      where: { projectId: project.id },
-    });
+    const materialStatuses = [
+      {
+        code: "available",
+        label: "Available",
+        severity: "success",
+        displayOrder: 1,
+      },
+      {
+        code: "partial",
+        label: "Partial",
+        severity: "warning",
+        displayOrder: 2,
+      },
+      {
+        code: "shortage",
+        label: "Shortage",
+        severity: "danger",
+        displayOrder: 3,
+      },
+    ];
 
-    await prisma.planningResource.createMany({
-      data: item.resources.map((resource) => ({
-        projectId: project.id,
-        documentId: null,
-        activityId: null,
-        resourceRole: resource.resourceRole,
-        resourceName: resource.resourceName,
-        plannedQty: resource.plannedQty,
-        availableQty: resource.availableQty,
-        requiredDate: resource.requiredDate,
-        healthStatus: resource.healthStatus,
-      })),
-    });
+    for (const item of materialStatuses) {
+      await prisma.materialAvailabilityStatusLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          severity: item.severity,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: item,
+      });
+    }
+
+    const labourStatuses = [
+      {
+        code: "full-crew",
+        label: "Full crew",
+        severity: "success",
+        displayOrder: 1,
+      },
+      { code: "short", label: "Short", severity: "warning", displayOrder: 2 },
+    ];
+
+    for (const item of labourStatuses) {
+      await prisma.labourAvailabilityStatusLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          severity: item.severity,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: item,
+      });
+    }
+
+    const deliveryStatuses = [
+      {
+        code: "delivered",
+        label: "Delivered",
+        severity: "success",
+        displayOrder: 1,
+      },
+      {
+        code: "pending",
+        label: "Pending delivery",
+        severity: "warning",
+        displayOrder: 2,
+      },
+      {
+        code: "not-planned",
+        label: "Not planned",
+        severity: "neutral",
+        displayOrder: 3,
+      },
+    ];
+
+    for (const item of deliveryStatuses) {
+      await prisma.deliveryStatusLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          severity: item.severity,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: item,
+      });
+    }
+
+    console.log("Material/resource lookup tables seeded.");
+  }
+  async function seedMaterialResource() {
+    const materialResourceData = [
+      {
+        projectCode: "PRJ-001",
+        resources: [
+          {
+            resourceRole: "HVAC",
+            resourceName: "GI ductwork - flat oval",
+            plannedQty: 240,
+            availableQty: 115,
+            requiredDate: d("2026-05-18"),
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "partial",
+            labourStatusCode: null,
+            deliveryStatusCode: "pending",
+          },
+          {
+            resourceRole: "Civil",
+            resourceName: "Rebar - 16mm",
+            plannedQty: 240,
+            availableQty: 0,
+            requiredDate: d("2026-05-20"),
+            healthStatus: HealthStatus.CRITICAL,
+            resourceCategoryCode: "material",
+            materialStatusCode: "shortage",
+            labourStatusCode: null,
+            deliveryStatusCode: "pending",
+          },
+          {
+            resourceRole: "Insulation",
+            resourceName: "Duct insulation wrap",
+            plannedQty: 320,
+            availableQty: 260,
+            requiredDate: d("2026-05-17"),
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Plumbing",
+            resourceName: "HDPE pipe - 110mm",
+            plannedQty: 180,
+            availableQty: 180,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "Electrical",
+            resourceName: "Copper cable - 6mm2",
+            plannedQty: 600,
+            availableQty: 420,
+            requiredDate: d("2026-05-19"),
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Fire Fighting",
+            resourceName: "Sprinkler heads - 68C",
+            plannedQty: 220,
+            availableQty: 0,
+            requiredDate: d("2026-05-22"),
+            healthStatus: HealthStatus.CRITICAL,
+            resourceCategoryCode: "material",
+            materialStatusCode: "shortage",
+            labourStatusCode: null,
+            deliveryStatusCode: "pending",
+          },
+          {
+            resourceRole: "Electrical",
+            resourceName: "Conduit - 25mm",
+            plannedQty: 400,
+            availableQty: 400,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "BMS",
+            resourceName: "BMS sensors",
+            plannedQty: 48,
+            availableQty: 48,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+
+          {
+            resourceRole: "HVAC technicians",
+            resourceName: "HVAC technicians",
+            plannedQty: 8,
+            availableQty: 8,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "Electricians",
+            resourceName: "Electrical crew",
+            plannedQty: 6,
+            availableQty: 4,
+            requiredDate: null,
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Plumbers",
+            resourceName: "Plumbing crew",
+            plannedQty: 5,
+            availableQty: 5,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "Civil crew",
+            resourceName: "Civil / structural team",
+            plannedQty: 10,
+            availableQty: 6,
+            requiredDate: null,
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+        ],
+      },
+      {
+        projectCode: "PRJ-003",
+        resources: [
+          {
+            resourceRole: "Traffic Signal",
+            resourceName: "Signal poles - 8m",
+            plannedQty: 24,
+            availableQty: 16,
+            requiredDate: d("2026-05-21"),
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Electrical",
+            resourceName: "Armoured cable - 4C x 16mm2",
+            plannedQty: 1200,
+            availableQty: 700,
+            requiredDate: d("2026-05-23"),
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Controller Cabinet",
+            resourceName: "Traffic controller cabinets",
+            plannedQty: 8,
+            availableQty: 0,
+            requiredDate: d("2026-05-25"),
+            healthStatus: HealthStatus.CRITICAL,
+            resourceCategoryCode: "material",
+            materialStatusCode: "shortage",
+            labourStatusCode: null,
+            deliveryStatusCode: "pending",
+          },
+          {
+            resourceRole: "Civil",
+            resourceName: "Precast foundation blocks",
+            plannedQty: 24,
+            availableQty: 24,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+
+          {
+            resourceRole: "Electricians",
+            resourceName: "Signal electrical crew",
+            plannedQty: 8,
+            availableQty: 7,
+            requiredDate: null,
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Technicians",
+            resourceName: "Signal testing technicians",
+            plannedQty: 5,
+            availableQty: 5,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "Civil crew",
+            resourceName: "Foundation civil team",
+            plannedQty: 12,
+            availableQty: 10,
+            requiredDate: null,
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+        ],
+      },
+      {
+        projectCode: "PRJ-004",
+        resources: [
+          {
+            resourceRole: "Road Marking",
+            resourceName: "Thermoplastic road marking paint",
+            plannedQty: 900,
+            availableQty: 900,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "Road Marking",
+            resourceName: "Glass beads",
+            plannedQty: 350,
+            availableQty: 240,
+            requiredDate: d("2026-05-16"),
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Signage",
+            resourceName: "Temporary diversion signs",
+            plannedQty: 75,
+            availableQty: 75,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+
+          {
+            resourceRole: "Road marking crew",
+            resourceName: "Road marking crew",
+            plannedQty: 14,
+            availableQty: 14,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "Safety crew",
+            resourceName: "Traffic safety marshals",
+            plannedQty: 6,
+            availableQty: 5,
+            requiredDate: null,
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+        ],
+      },
+      {
+        projectCode: "PRJ-005",
+        resources: [
+          {
+            resourceRole: "CCTV",
+            resourceName: "IP CCTV cameras",
+            plannedQty: 64,
+            availableQty: 52,
+            requiredDate: d("2026-05-18"),
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+          {
+            resourceRole: "Network",
+            resourceName: "PoE network switches",
+            plannedQty: 12,
+            availableQty: 0,
+            requiredDate: d("2026-05-24"),
+            healthStatus: HealthStatus.CRITICAL,
+            resourceCategoryCode: "material",
+            materialStatusCode: "shortage",
+            labourStatusCode: null,
+            deliveryStatusCode: "pending",
+          },
+          {
+            resourceRole: "Fiber",
+            resourceName: "Fiber patch cords",
+            plannedQty: 180,
+            availableQty: 180,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+
+          {
+            resourceRole: "CCTV technicians",
+            resourceName: "CCTV installation team",
+            plannedQty: 7,
+            availableQty: 7,
+            requiredDate: null,
+            healthStatus: HealthStatus.ON_TRACK,
+            resourceCategoryCode: "material",
+            materialStatusCode: "available",
+            labourStatusCode: null,
+            deliveryStatusCode: "delivered",
+          },
+          {
+            resourceRole: "Network engineers",
+            resourceName: "Network configuration team",
+            plannedQty: 3,
+            availableQty: 2,
+            requiredDate: null,
+            healthStatus: HealthStatus.AT_RISK,
+            resourceCategoryCode: "labour",
+            materialStatusCode: null,
+            labourStatusCode: "short",
+            deliveryStatusCode: "not-planned",
+          },
+        ],
+      },
+    ];
+
+    for (const item of materialResourceData) {
+      const project = await prisma.project.findUnique({
+        where: { code: item.projectCode },
+      });
+
+      if (!project) {
+        throw new Error(
+          `Cannot seed material/resource: project ${item.projectCode} not found`,
+        );
+      }
+
+      await prisma.planningResource.deleteMany({
+        where: { projectId: project.id },
+      });
+
+      await prisma.planningResource.createMany({
+        data: item.resources.map((resource) => ({
+          projectId: project.id,
+          documentId: null,
+          activityId: null,
+          resourceRole: resource.resourceRole,
+          resourceName: resource.resourceName,
+          plannedQty: resource.plannedQty,
+          availableQty: resource.availableQty,
+          requiredDate: resource.requiredDate,
+          healthStatus: resource.healthStatus,
+          resourceCategoryCode: resource.resourceCategoryCode,
+          materialStatusCode: resource.materialStatusCode,
+          labourStatusCode: resource.labourStatusCode,
+          deliveryStatusCode: resource.deliveryStatusCode,
+        })),
+      });
+    }
+
+    console.log("Material and resource data seeded.");
   }
 
-  console.log("Material and resource data seeded.");
-}
-
-  
   await seedDocumentationStatusRecords();
   await seedRevenueBilling();
   await seedInvoices();
+  await seedMaterialResourceLookups();
   await seedMaterialResource();
+  
 
   console.log("Seed completed successfully.");
 }

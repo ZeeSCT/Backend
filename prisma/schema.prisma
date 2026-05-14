@@ -703,6 +703,77 @@ model ActivitySeverityLookup {
   @@index([displayOrder])
 }
 
+model ResourceCategoryLookup {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  label        String
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  resources PlanningResource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model MaterialAvailabilityStatusLookup {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  label        String
+  severity     String?
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  resources PlanningResource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model LabourAvailabilityStatusLookup {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  label        String
+  severity     String?
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  resources PlanningResource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model DeliveryStatusLookup {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  label        String
+  severity     String?
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  resources PlanningResource[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
 /**
  * --------------------------------------------------------------------------
  */
@@ -915,26 +986,44 @@ model PlanningMilestone {
 }
 
 model PlanningResource {
-  id           String       @id @default(cuid())
+  id           String @id @default(cuid())
   projectId    String
   documentId   String?
   activityId   String?
+
   resourceRole String
   resourceName String?
-  plannedQty   Int          @default(0)
-  availableQty Int          @default(0)
+
+  plannedQty   Int       @default(0)
+  availableQty Int       @default(0)
   requiredDate DateTime?
+
+  resourceCategoryCode String @default("material")
+  materialStatusCode   String?
+  labourStatusCode     String?
+  deliveryStatusCode   String @default("not-planned")
+
   healthStatus HealthStatus @default(ON_TRACK)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  resourceCategory ResourceCategoryLookup @relation(fields: [resourceCategoryCode], references: [code])
+  materialStatus   MaterialAvailabilityStatusLookup? @relation(fields: [materialStatusCode], references: [code])
+  labourStatus     LabourAvailabilityStatusLookup? @relation(fields: [labourStatusCode], references: [code])
+  deliveryStatus   DeliveryStatusLookup @relation(fields: [deliveryStatusCode], references: [code])
 
   @@index([projectId])
   @@index([documentId])
   @@index([activityId])
   @@index([healthStatus])
+  @@index([resourceCategoryCode])
+  @@index([materialStatusCode])
+  @@index([labourStatusCode])
+  @@index([deliveryStatusCode])
 }
 
 /**

@@ -1,8 +1,21 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
-import { HealthStatus } from "@prisma/client";
+import { RecordStatus } from "@prisma/client";
 
 type MaterialFilter = "all" | "shortages" | "pending";
+const RESOURCE_CATEGORY = {
+  MATERIAL: "material",
+  LABOUR: "labour",
+} as const;
+
+const MATERIAL_STATUS = {
+  SHORTAGE: "shortage",
+} as const;
+
+const DELIVERY_STATUS = {
+  DELIVERED: "delivered",
+  PENDING: "pending",
+} as const;
 
 @Injectable()
 export class MaterialResourceService {
@@ -11,7 +24,10 @@ export class MaterialResourceService {
   async getProjects(category: string) {
     const projects = await this.prisma.project.findMany({
       where: {
-        status: "ACTIVE",
+        status: RecordStatus.ACTIVE,
+        resources: {
+          some: {},
+        },
         ...(category !== "all"
           ? {
               OR: [
@@ -31,12 +47,11 @@ export class MaterialResourceService {
           },
         },
         resources: {
-          select: {
-            resourceRole: true,
-            plannedQty: true,
-            availableQty: true,
-            requiredDate: true,
-            healthStatus: true,
+          include: {
+            resourceCategory: true,
+            materialStatus: true,
+            labourStatus: true,
+            deliveryStatus: true,
           },
         },
       },
@@ -47,7 +62,8 @@ export class MaterialResourceService {
 
     return projects.map((project) => {
       const materialResources = project.resources.filter(
-        (resource) => !this.isLabourResource(resource.resourceRole),
+        (resource) =>
+          resource.resourceCategoryCode === RESOURCE_CATEGORY.MATERIAL,
       );
 
       return {
@@ -58,8 +74,8 @@ export class MaterialResourceService {
           (sum, row) => sum + row.availableQty,
           0,
         ),
-        pendingDelivery: materialResources.filter((row) =>
-          this.isPendingDelivery(row.requiredDate, row.healthStatus),
+        pendingDelivery: materialResources.filter(
+          (row) => row.deliveryStatusCode === DELIVERY_STATUS.PENDING,
         ).length,
       };
     });
@@ -69,103 +85,91 @@ export class MaterialResourceService {
     this.validateProjectId(projectId);
 
     const resources = await this.prisma.planningResource.findMany({
-      where: {
-        projectId,
-      },
+      where: { projectId },
     });
 
     const materialResources = resources.filter(
-      (row) => !this.isLabourResource(row.resourceRole),
+      (row) => row.resourceCategoryCode === RESOURCE_CATEGORY.MATERIAL,
     );
 
-    const labourResources = resources.filter((row) =>
-      this.isLabourResource(row.resourceRole),
-    );
-
-    const shortages = materialResources.filter(
-      (row) => row.availableQty < row.plannedQty,
-    ).length;
-
-    const pendingDelivery = materialResources.filter((row) =>
-      this.isPendingDelivery(row.requiredDate, row.healthStatus),
-    ).length;
-
-    const materialsOnSite = materialResources.reduce(
-      (sum, row) => sum + row.availableQty,
-      0,
-    );
-
-    const plannedLabour = labourResources.reduce(
-      (sum, row) => sum + row.plannedQty,
-      0,
-    );
-
-    const labourOnSite = labourResources.reduce(
-      (sum, row) => sum + row.availableQty,
-      0,
+    const labourResources = resources.filter(
+      (row) => row.resourceCategoryCode === RESOURCE_CATEGORY.LABOUR,
     );
 
     return {
-      materialsOnSite,
-      shortages,
-      pendingDelivery,
-      labourOnSite,
-      plannedLabour,
+      materialsOnSite: materialResources.reduce(
+        (sum, row) => sum + row.availableQty,
+        0,
+      ),
+      shortages: materialResources.filter(
+        (row) => row.materialStatusCode === MATERIAL_STATUS.SHORTAGE,
+      ).length,
+      pendingDelivery: materialResources.filter(
+        (row) => row.deliveryStatusCode === DELIVERY_STATUS.PENDING,
+      ).length,
+      labourOnSite: labourResources.reduce(
+        (sum, row) => sum + row.availableQty,
+        0,
+      ),
+      plannedLabour: labourResources.reduce(
+        (sum, row) => sum + row.plannedQty,
+        0,
+      ),
     };
   }
 
   async getMaterials(projectId: string, filter: MaterialFilter) {
     this.validateProjectId(projectId);
 
+    const where: {
+      projectId: string;
+      resourceCategoryCode: string;
+      materialStatusCode?: string;
+      deliveryStatusCode?: string;
+    } = {
+      projectId,
+      resourceCategoryCode: RESOURCE_CATEGORY.MATERIAL,
+    };
+
+    if (filter === "shortages") {
+      where.materialStatusCode = MATERIAL_STATUS.SHORTAGE;
+    }
+
+    if (filter === "pending") {
+      where.deliveryStatusCode = DELIVERY_STATUS.PENDING;
+    }
+
     const rows = await this.prisma.planningResource.findMany({
-      where: {
-        projectId,
-      },
+      where,
       include: {
-        project: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        materialStatus: true,
+        deliveryStatus: true,
       },
       orderBy: {
         requiredDate: "asc",
       },
     });
 
-    const materialRows = rows
-      .filter((row) => !this.isLabourResource(row.resourceRole))
-      .map((row) => {
-        const shortQty = Math.max(row.plannedQty - row.availableQty, 0);
+    return rows.map((row) => {
+      const shortQty = Math.max(row.plannedQty - row.availableQty, 0);
 
-        return {
-          id: row.id,
-          projectId: row.projectId,
-          material: row.resourceName ?? row.resourceRole,
-          packageName: row.resourceRole,
-          requiredQty: String(row.plannedQty),
-          onSite: String(row.availableQty),
-          short: shortQty > 0 ? String(shortQty) : "—",
-          expectedDelivery:
-            row.availableQty >= row.plannedQty
-              ? "Delivered"
-              : row.requiredDate
-                ? this.formatDate(row.requiredDate)
-                : "Not planned",
-          status: this.getMaterialStatus(row.plannedQty, row.availableQty),
-        };
-      });
-
-    if (filter === "shortages") {
-      return materialRows.filter((row) => row.status === "Shortage");
-    }
-
-    if (filter === "pending") {
-      return materialRows.filter((row) => row.expectedDelivery !== "Delivered");
-    }
-
-    return materialRows;
+      return {
+        id: row.id,
+        projectId: row.projectId,
+        material: row.resourceName ?? row.resourceRole,
+        packageName: row.resourceRole,
+        requiredQty: String(row.plannedQty),
+        onSite: String(row.availableQty),
+        short: shortQty > 0 ? String(shortQty) : "—",
+        expectedDelivery:
+          row.deliveryStatusCode === DELIVERY_STATUS.DELIVERED
+            ? row.deliveryStatus.label
+            : row.requiredDate
+              ? this.formatDate(row.requiredDate)
+              : row.deliveryStatus.label,
+        status: row.materialStatus?.label ?? "",
+      };
+    });
   }
 
   async getLabour(projectId: string) {
@@ -174,59 +178,30 @@ export class MaterialResourceService {
     const rows = await this.prisma.planningResource.findMany({
       where: {
         projectId,
+        resourceCategoryCode: RESOURCE_CATEGORY.LABOUR,
+      },
+      include: {
+        labourStatus: true,
       },
       orderBy: {
         resourceRole: "asc",
       },
     });
 
-    return rows
-      .filter((row) => this.isLabourResource(row.resourceRole))
-      .map((row) => ({
-        id: row.id,
-        projectId: row.projectId,
-        trade: row.resourceName ?? row.resourceRole,
-        plannedHeadcount: row.plannedQty,
-        onSiteToday: row.availableQty,
-        status: row.availableQty >= row.plannedQty ? "Full crew" : "Short",
-      }));
+    return rows.map((row) => ({
+      id: row.id,
+      projectId: row.projectId,
+      trade: row.resourceName ?? row.resourceRole,
+      plannedHeadcount: row.plannedQty,
+      onSiteToday: row.availableQty,
+      status: row.labourStatus?.label ?? "",
+    }));
   }
 
   private validateProjectId(projectId?: string) {
     if (!projectId) {
       throw new BadRequestException("projectId is required");
     }
-  }
-
-  private isLabourResource(resourceRole: string) {
-    const value = resourceRole.toLowerCase();
-
-    return (
-      value.includes("labour") ||
-      value.includes("labor") ||
-      value.includes("worker") ||
-      value.includes("technician") ||
-      value.includes("engineer") ||
-      value.includes("electrician") ||
-      value.includes("plumber") ||
-      value.includes("crew")
-    );
-  }
-
-  private getMaterialStatus(plannedQty: number, availableQty: number) {
-    if (availableQty >= plannedQty) return "Available";
-    if (availableQty === 0) return "Shortage";
-    return "Partial";
-  }
-
-  private isPendingDelivery(
-    requiredDate: Date | null,
-    healthStatus: HealthStatus,
-  ) {
-    if (healthStatus === "DELAYED" || healthStatus === "CRITICAL") return true;
-    if (!requiredDate) return false;
-
-    return requiredDate >= new Date();
   }
 
   private formatDate(date: Date) {
@@ -236,3 +211,6 @@ export class MaterialResourceService {
     });
   }
 }
+
+  
+
