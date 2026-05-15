@@ -1671,8 +1671,6 @@ async function main() {
     console.log("Invoices seeded.");
   }
 
-<<<<<<< Updated upstream
-=======
   async function upsertUserByEmail(input: {
     name: string;
     email: string;
@@ -2309,7 +2307,6 @@ async function main() {
     },
   });
 
->>>>>>> Stashed changes
   /* ---------------------------------- */
   /* PROJECTS */
   /* ---------------------------------- */
