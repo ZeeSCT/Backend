@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -27,8 +28,18 @@ export class ResourceAssignmentController {
     private readonly resourceAssignmentService: ResourceAssignmentService,
   ) {}
 
+  @Get("metadata")
+  @ApiOperation({
+    summary: "Get resource assignment enum metadata",
+  })
+  getMetadata() {
+    return this.resourceAssignmentService.getMetadata();
+  }
+
   @Get("projects")
-  @ApiOperation({ summary: "Get active projects for resource assignment" })
+  @ApiOperation({
+    summary: "Get active projects for resource assignment",
+  })
   getProjects() {
     return this.resourceAssignmentService.getProjects();
   }
@@ -76,7 +87,7 @@ export class ResourceAssignmentController {
   @ApiQuery({
     name: "status",
     required: false,
-    example: "unassigned",
+    example: "UNASSIGNED",
   })
   @ApiQuery({
     name: "search",
@@ -104,17 +115,22 @@ export class ResourceAssignmentController {
 
   @Get("available-resources")
   @ApiOperation({
-    summary: "Get available resources for assignment date range",
+    summary: "Get available seeded resources for assignment date range",
   })
   @ApiQuery({
     name: "type",
     required: false,
-    example: "PERSON",
+    example: "SITE_ENGINEER",
   })
   @ApiQuery({
     name: "role",
     required: false,
     example: "Site Engineer",
+  })
+  @ApiQuery({
+    name: "search",
+    required: false,
+    example: "Ahmed",
   })
   @ApiQuery({
     name: "start",
@@ -129,20 +145,31 @@ export class ResourceAssignmentController {
   getAvailableResources(
     @Query("type") type?: string,
     @Query("role") role?: string,
+    @Query("search") search?: string,
     @Query("start") start?: string,
     @Query("finish") finish?: string,
   ) {
     return this.resourceAssignmentService.getAvailableResources({
       type,
       role,
+      search,
       start,
       finish,
     });
   }
 
+  @Get("activities/:activityId/assignments")
+  @ApiOperation({
+    summary: "Get assigned resources for selected schedule activity",
+  })
+  @ApiParam({ name: "activityId", required: true })
+  getActivityAssignments(@Param("activityId") activityId: string) {
+    return this.resourceAssignmentService.getActivityAssignments(activityId);
+  }
+
   @Post("activities/:activityId/assign")
   @ApiOperation({
-    summary: "Assign a resource to a schedule activity",
+    summary: "Assign or update a resource assignment for a schedule activity",
   })
   @ApiParam({ name: "activityId", required: true })
   assignResource(
@@ -150,5 +177,14 @@ export class ResourceAssignmentController {
     @Body() dto: AssignResourceDto,
   ) {
     return this.resourceAssignmentService.assignResource(activityId, dto);
+  }
+
+  @Delete("assignments/:assignmentId")
+  @ApiOperation({
+    summary: "Remove resource assignment from schedule activity",
+  })
+  @ApiParam({ name: "assignmentId", required: true })
+  removeAssignment(@Param("assignmentId") assignmentId: string) {
+    return this.resourceAssignmentService.removeAssignment(assignmentId);
   }
 }
