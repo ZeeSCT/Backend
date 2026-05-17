@@ -7,6 +7,8 @@ import {
   InvoiceStatus,
   RecordStatus,
   UserRole,
+  ResourceType,
+  ActivityStatus,
 } from "@prisma/client";
 
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -29,6 +31,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * DAY_MS);
 }
+
+
+
 
 async function main() {
   console.log("Starting seed...");
@@ -203,6 +208,8 @@ async function main() {
 
   type CategoryCode = keyof typeof categoryMap;
 
+
+
   /* ---------------------------------- */
   /* TYPES */
   /* ---------------------------------- */
@@ -291,6 +298,182 @@ async function main() {
     activities?: SeedActivityInput[];
     milestones?: SeedMilestoneInput[];
   };
+
+
+async function seedResources() {
+  console.log("Seeding resources...");
+ 
+  const resources = [
+    {
+      employeeCode: "RES-SE-001",
+      name: "Ahmed Khan",
+      type: ResourceType.SITE_ENGINEER,
+      designation: "Site Engineer",
+      discipline: "ITS",
+      email: "ahmed.khan@scientechnic.local",
+      phone: "+971500000001",
+    },
+    {
+      employeeCode: "RES-SE-002",
+      name: "Ravi Menon",
+      type: ResourceType.SITE_ENGINEER,
+      designation: "Site Engineer",
+      discipline: "Traffic Systems",
+      email: "ravi.menon@scientechnic.local",
+      phone: "+971500000002",
+    },
+    {
+      employeeCode: "RES-FE-001",
+      name: "Mohammed Ali",
+      type: ResourceType.FIELD_ENGINEER,
+      designation: "Field Engineer",
+      discipline: "Site Execution",
+      email: "mohammed.ali@scientechnic.local",
+      phone: "+971500000003",
+    },
+    {
+      employeeCode: "RES-SUP-001",
+      name: "Suresh Kumar",
+      type: ResourceType.SUPERVISOR,
+      designation: "Supervisor",
+      discipline: "Civil Works",
+      email: "suresh.kumar@scientechnic.local",
+      phone: "+971500000004",
+    },
+    {
+      employeeCode: "RES-SUP-002",
+      name: "Imran Shaikh",
+      type: ResourceType.SUPERVISOR,
+      designation: "Supervisor",
+      discipline: "ITS Installation",
+      email: "imran.shaikh@scientechnic.local",
+      phone: "+971500000005",
+    },
+    {
+      employeeCode: "RES-TECH-001",
+      name: "Arun Joseph",
+      type: ResourceType.TECHNICIAN,
+      designation: "Technician",
+      discipline: "ITS Installation",
+      email: "arun.joseph@scientechnic.local",
+      phone: "+971500000006",
+    },
+    {
+      employeeCode: "RES-TECH-002",
+      name: "Bilal Hassan",
+      type: ResourceType.TECHNICIAN,
+      designation: "Technician",
+      discipline: "Traffic Signal",
+      email: "bilal.hassan@scientechnic.local",
+      phone: "+971500000007",
+    },
+    {
+      employeeCode: "RES-TECH-003",
+      name: "Naveen Raj",
+      type: ResourceType.TECHNICIAN,
+      designation: "Technician",
+      discipline: "ELV",
+      email: "naveen.raj@scientechnic.local",
+      phone: "+971500000008",
+    },
+    {
+      employeeCode: "RES-CREW-001",
+      name: "Civil Installation Crew A",
+      type: ResourceType.CREW,
+      designation: "Civil Crew",
+      discipline: "Civil Works",
+      email: null,
+      phone: null,
+    },
+    {
+      employeeCode: "RES-CREW-002",
+      name: "ITS Installation Crew A",
+      type: ResourceType.CREW,
+      designation: "ITS Crew",
+      discipline: "ITS Installation",
+      email: null,
+      phone: null,
+    },
+    {
+      employeeCode: "RES-EQ-001",
+      name: "Boom Lift",
+      type: ResourceType.EQUIPMENT,
+      designation: "Equipment",
+      discipline: "Access Equipment",
+      email: null,
+      phone: null,
+    },
+    {
+      employeeCode: "RES-EQ-002",
+      name: "Cable Pulling Machine",
+      type: ResourceType.EQUIPMENT,
+      designation: "Equipment",
+      discipline: "Installation Equipment",
+      email: null,
+      phone: null,
+    },
+    {
+      employeeCode: "RES-MAT-001",
+      name: "Fiber Optic Cable",
+      type: ResourceType.MATERIAL,
+      designation: "Material",
+      discipline: "Fiber Network",
+      email: null,
+      phone: null,
+    },
+    {
+      employeeCode: "RES-VEN-001",
+      name: "Traffic Signal Vendor",
+      type: ResourceType.VENDOR,
+      designation: "Vendor",
+      discipline: "Traffic Systems",
+      email: "vendor.traffic@scientechnic.local",
+      phone: "+971500000009",
+    },
+    {
+      employeeCode: "RES-SUB-001",
+      name: "Civil Works Subcontractor",
+      type: ResourceType.SUBCONTRACTOR,
+      designation: "Subcontractor",
+      discipline: "Civil Works",
+      email: "subcontractor.civil@scientechnic.local",
+      phone: "+971500000010",
+    },
+  ];
+ 
+  for (const resource of resources) {
+    await prisma.resource.upsert({
+      where: {
+        employeeCode: resource.employeeCode,
+      },
+      update: {
+        name: resource.name,
+        type: resource.type,
+        designation: resource.designation,
+        discipline: resource.discipline,
+        email: resource.email,
+        phone: resource.phone,
+        isActive: true,
+      },
+      create: {
+        employeeCode: resource.employeeCode,
+        name: resource.name,
+        type: resource.type,
+        designation: resource.designation,
+        discipline: resource.discipline,
+        email: resource.email,
+        phone: resource.phone,
+        isActive: true,
+      },
+    });
+  }
+ 
+  console.log(`Seeded ${resources.length} resources.`);
+}
+
+
+
+  
 
   /* ---------------------------------- */
   /* LOOKUP TABLES */
@@ -1748,19 +1931,139 @@ async function seedMaterialResource() {
         healthStatus: resource.healthStatus,
       })),
     });
-  }
 
   console.log("Material and resource data seeded.");
+
 }
 
-  
+function getProgressForStoredStatus(status: ActivityStatus) {
+  switch (status) {
+    case ActivityStatus.COMPLETED:
+      return 100;
+    case ActivityStatus.IN_PROGRESS:
+      return 50;
+    case ActivityStatus.DELAYED:
+      return 40;
+    case ActivityStatus.BLOCKED:
+      return 30;
+    case ActivityStatus.ON_HOLD:
+      return 20;
+    case ActivityStatus.NOT_STARTED:
+    default:
+      return 0;
+  }
+}
+
+function getProgressClassForStoredStatus(status: ActivityStatus) {
+  switch (status) {
+    case ActivityStatus.COMPLETED:
+      return "bfg";
+    case ActivityStatus.DELAYED:
+    case ActivityStatus.BLOCKED:
+      return "bfr";
+    default:
+      return "bfb";
+  }
+}
+
+function getBadgeClassForStoredStatus(status: ActivityStatus) {
+  switch (status) {
+    case ActivityStatus.COMPLETED:
+      return "bg2";
+    case ActivityStatus.IN_PROGRESS:
+      return "bb";
+    case ActivityStatus.DELAYED:
+    case ActivityStatus.BLOCKED:
+      return "br";
+    case ActivityStatus.ON_HOLD:
+      return "bt2";
+    case ActivityStatus.NOT_STARTED:
+    default:
+      return "bgr";
+  }
+}
+
+async function seedTaskAssignmentBoardData() {
+  console.log("Seeding task assignment board data...");
+
+  const activities = await prisma.scheduleActivity.findMany({
+    where: { isMilestone: false },
+    orderBy: [{ projectId: "asc" }, { activityName: "asc" }],
+  });
+
+  const resources = await prisma.resource.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+  });
+
+  if (!activities.length) {
+    console.log("No schedule activities found.");
+    return;
+  }
+
+  if (!resources.length) {
+    throw new Error("No active resources found. Run seedResources first.");
+  }
+
+  for (let index = 0; index < activities.length; index++) {
+    const activity = activities[index];
+    const resource = resources[index % resources.length];
+
+    await prisma.activityResourceAssignment.upsert({
+      where: {
+        activityId_resourceId: {
+          activityId: activity.id,
+          resourceId: resource.id,
+        },
+      },
+      update: {
+        projectId: activity.projectId,
+        plannedStart: activity.startDate,
+        plannedFinish: activity.finishDate,
+      },
+      create: {
+        projectId: activity.projectId,
+        activityId: activity.id,
+        resourceId: resource.id,
+        allocation: 100,
+        plannedStart: activity.startDate,
+        plannedFinish: activity.finishDate,
+      },
+    });
+
+    const existingProgress = await prisma.activityStatusUpdate.findFirst({
+      where: { scheduleActivityId: activity.id },
+    });
+
+    if (!existingProgress) {
+      await prisma.activityStatusUpdate.create({
+        data: {
+          scheduleActivityId: activity.id,
+          status: activity.status,
+          progressPercentage: getProgressForStoredStatus(activity.status),
+          progressColorClass: getProgressClassForStoredStatus(activity.status),
+          statusBadgeClass: getBadgeClassForStoredStatus(activity.status),
+          remarks: "Initial seeded task progress",
+          updatedBy: "Seed",
+        },
+      });
+    }
+  }
+
+  console.log(`Seeded ${activities.length} task assignment records.`);
+}
+
+
+
+  await seedResources();
   await seedDocumentationStatusRecords();
   await seedRevenueBilling();
   await seedInvoices();
   await seedMaterialResource();
+  await seedTaskAssignmentBoardData();
 
   console.log("Seed completed successfully.");
-}
+}}
 
 main()
   .catch((error) => {

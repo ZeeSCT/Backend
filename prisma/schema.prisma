@@ -90,10 +90,17 @@ enum ActivityStatus {
 
 enum ResourceType {
   PERSON
+  TEAM
+  RESOURCE
+  SITE_ENGINEER
+  FIELD_ENGINEER
+  SUPERVISOR
+  TECHNICIAN
+  CREW
   EQUIPMENT
   MATERIAL
-  TEAM
   VENDOR
+  SUBCONTRACTOR
 }
 
 /**
@@ -389,6 +396,7 @@ model ScheduleActivity {
 
   resourceAssignments ActivityResourceAssignment[]
   statusUpdates       ActivityStatusUpdate[]
+  taskProgressUpdates TaskProgressUpdate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -469,8 +477,10 @@ model ScheduleImportError {
 model Resource {
   id String @id @default(cuid())
 
+  employeeCode String? @unique
+
   name String
-  type ResourceType @default(PERSON)
+  type ResourceType @default(RESOURCE)
 
   discipline  String?
   designation String?
@@ -530,6 +540,8 @@ model ActivityStatusUpdate {
   status             ActivityStatus
   progressPercentage Float?
   remarks            String?
+  progressColorClass String?
+  statusBadgeClass   String?
 
   uploadedFileUrl  String?
   uploadedFileName String?
@@ -547,6 +559,32 @@ model ActivityStatusUpdate {
   @@index([scheduleActivityId])
   @@index([status])
   @@index([updatedAt])
+}
+
+/**
+ * /**
+ * Task Progress
+ */
+
+model TaskProgressUpdate {
+  id String @id @default(cuid())
+
+  scheduleActivityId String
+
+  progressPercentage Float          @default(0)
+  status             ActivityStatus
+  remarks            String?
+
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scheduleActivity ScheduleActivity @relation(fields: [scheduleActivityId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleActivityId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 /**
@@ -608,7 +646,7 @@ model ProjectBilling {
   overdueReceivables Decimal? @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 /**
