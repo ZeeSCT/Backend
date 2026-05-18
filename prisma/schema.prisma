@@ -142,9 +142,8 @@ model User {
   email        String   @unique
   passwordHash String
   role         UserRole @default(ENGINEER)
+  department   String?
   isActive     Boolean  @default(true)
-
-  department String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -827,7 +826,7 @@ model ProjectBilling {
   overdueReceivables Decimal? @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 /**
@@ -918,14 +917,6 @@ model ActivitySeverityLookup {
   @@index([displayOrder])
 }
 
-/**
- * --------------------------------------------------------------------------
- */
-/**
- * ROLES & PERMISSIONS
- * --------------------------------------------------------------------------
- */
-
 model RolePermission {
   id String @id @default(cuid())
 
@@ -961,22 +952,25 @@ model RolePermission {
 
 /**
  * --------------------------------------------------------------------------
- * SYSTEM SETTINGS
+ */
+/**
+ * SystemSetting
+ */
+/**
  * --------------------------------------------------------------------------
  */
 
 model SystemSetting {
-  id          String  @id @default(cuid())
-  key         String  @unique
+  id          String   @id @default(cuid())
+  key         String   @unique
   label       String
   value       String
   category    String
-  status      String  @default("Active")
+  status      String   @default("Active")
   description String?
-  isEditable  Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isEditable  Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 /**

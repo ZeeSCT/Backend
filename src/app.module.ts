@@ -15,6 +15,10 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ScreenCatalogModule } from './modules/screen-catalog/screen-catalog.module';
 import { RevenueBillingModule } from './modules/executive/revenue-billing/revenue-billing.module';
 
+
+import { RolePermissionsModule } from "./modules/admin/Access Control/Roles&Permission/roles.module";
+import { SystemSettingsModule } from "./modules/admin/Systemsetting/system-settings.module";
+
 import { SchedulesModule } from "./modules/admin/schedules/schedules.module";
 import { ResourceAssignmentModule } from "./modules/admin/resource-assignment/resource-assignment.module";
 import {ProjectsMasterModule} from "./modules/admin/projects/projects.module";
@@ -37,12 +41,15 @@ import { DocumentStatusModule } from "./modules/admin/document-status/document-s
     PortfolioOverviewModule,
     ExecutiveModule,
     RevenueBillingModule,
+    UsersModule,
     ProjectsModule,
     TendersModule,
     PlanningModule,
     QaqcModule,
     ProcurementModule,
     MaintenanceModule,
+    RolePermissionsModule,
+    SystemSettingsModule,
   ],
 })
 export class AppModule {}
