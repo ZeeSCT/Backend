@@ -19,7 +19,7 @@ import { UpdateRolePermissionDto } from "./dto/update-role-permission.dto";
 @ApiTags("Role Permissions")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
-@Controller("api/v1/roles")
+@Controller("/roles")
 export class RolePermissionsController {
   constructor(private readonly service: RolePermissionsService) {}
 
