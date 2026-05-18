@@ -29,7 +29,7 @@ import { RevenueBillingService } from "./revenue-billing/revenue-billing.service
 @ApiTags("Executive Screens")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("api/v1/executive")
+@Controller("/executive")
 export class ExecutiveController {
   constructor(
     private readonly service: ExecutiveService,

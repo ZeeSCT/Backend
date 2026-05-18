@@ -5,7 +5,7 @@ import { TendersService } from './tenders.service';
 @ApiTags('Tender Management Screens')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/tenders')
+@Controller('/tenders')
 export class TendersController {
   constructor(private service: TendersService) {}
   @Get() findAll(){ return this.service.findAll(); }

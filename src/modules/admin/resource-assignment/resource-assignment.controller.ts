@@ -22,7 +22,7 @@ import { AssignResourceDto } from "./dto/assign-resource.dto";
 @ApiTags("Resource Assignment")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("api/v1/admin/resource-assignment")
+@Controller("/admin/resource-assignment")
 export class ResourceAssignmentController {
   constructor(
     private readonly resourceAssignmentService: ResourceAssignmentService,

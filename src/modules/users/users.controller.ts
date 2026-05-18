@@ -19,7 +19,7 @@ import { SuperAdminGuard } from "@/common/guards/super-admin.guard";
 @ApiTags("Users")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
-@Controller("api/v1/users")
+@Controller("/users")
 export class UsersController {
   constructor(private service: UsersService) {}
 

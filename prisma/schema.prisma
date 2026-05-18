@@ -125,6 +125,11 @@ enum ResourceAvailabilityStatus {
   OVER_ALLOCATED
 }
 
+enum DocumentImportSource {
+  MANUAL
+  EXCEL_IMPORT
+}
+
 /**
  * --------------------------------------------------------------------------
  * USERS
@@ -716,6 +721,58 @@ model ActivityStatusUpdate {
 
 /**
  * --------------------------------------------------------------------------
+ * DOCUMENT STATUS MODELS
+ * --------------------------------------------------------------------------
+ */
+
+model DocumentDisciplineLookup {
+  code         String  @id
+  label        String
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  planningDocuments PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model DocumentOwnerLookup {
+  code         String  @id
+  label        String
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  planningDocuments PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model DocumentWorkflowStatusLookup {
+  code         String  @id
+  label        String
+  tone         String?
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  planningDocuments PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+/**
+ * --------------------------------------------------------------------------
  * INVOICING
  * --------------------------------------------------------------------------
  */
@@ -769,7 +826,7 @@ model ProjectBilling {
   overdueReceivables Decimal? @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }
 
 /**
@@ -860,8 +917,6 @@ model ActivitySeverityLookup {
   @@index([displayOrder])
 }
 
-
-
 model RolePermission {
   id String @id @default(cuid())
 
@@ -916,66 +971,6 @@ model SystemSetting {
   isEditable  Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-}
-
-/**
- * --------------------------------------------------------------------------
- */
-/**
- * TENDERS
- */
-
-model RolePermission {
-  id String @id @default(cuid())
-
-  role UserRole @unique
-
-  adminView   Boolean @default(false)
-  adminCreate Boolean @default(false)
-  adminEdit   Boolean @default(false)
-  adminDelete Boolean @default(false)
-
-  executiveDashboardView Boolean @default(false)
-
-  pmDashboardView Boolean @default(false)
-
-  projectView   Boolean @default(false)
-  projectCreate Boolean @default(false)
-  projectEdit   Boolean @default(false)
-  projectDelete Boolean @default(false)
-
-  planningView   Boolean @default(false)
-  planningCreate Boolean @default(false)
-  planningEdit   Boolean @default(false)
-  planningDelete Boolean @default(false)
-
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([role])
-  @@index([isActive])
-}
-
-/**
- * --------------------------------------------------------------------------
- * SYSTEM SETTINGS
- * --------------------------------------------------------------------------
- */
-
-model SystemSetting {
-  id          String  @id @default(cuid())
-  key         String  @unique
-  label       String
-  value       String
-  category    String
-  status      String  @default("Active")
-  description String?
-  isEditable  Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 /**
@@ -1041,9 +1036,6 @@ model PlanningDocument {
   uploadedBy String?
   uploadedAt DateTime @default(now())
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   stage          DocumentationStageLookup     @relation(fields: [stageCode], references: [code])
@@ -1052,6 +1044,36 @@ model PlanningDocument {
   activities PlanningActivity[]
   milestones PlanningMilestone[]
   resources  PlanningResource[]
+
+  documentNo String?
+  title      String?
+
+  documentType     String?
+  documentCategory String?
+  documentTypeCode String?
+  packageName      String?
+  delayIndicator   String?
+
+  disciplineCode String?
+  discipline     DocumentDisciplineLookup? @relation(fields: [disciplineCode], references: [code])
+
+  ownerCode String?
+  owner     DocumentOwnerLookup? @relation(fields: [ownerCode], references: [code])
+
+  workflowStatusCode String?                       @default("draft")
+  workflowStatus     DocumentWorkflowStatusLookup? @relation(fields: [workflowStatusCode], references: [code])
+
+  progressPct Int @default(0)
+
+  lastUpdate String?
+  remarks    String?
+
+  importSource DocumentImportSource @default(MANUAL)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([projectId])
   @@index([stageCode])

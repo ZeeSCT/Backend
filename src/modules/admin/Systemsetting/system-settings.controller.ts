@@ -7,7 +7,7 @@ import { UpdateSystemSettingsDto } from "./dto/update-system-settings.dto";
 @ApiTags("Admin - System Settings")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("api/v1/admin/system-settings")
+@Controller("/admin/system-settings")
 export class SystemSettingsController {
   constructor(private readonly service: SystemSettingsService) {}
 

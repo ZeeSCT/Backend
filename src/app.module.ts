@@ -23,6 +23,7 @@ import { SchedulesModule } from "./modules/admin/schedules/schedules.module";
 import { ResourceAssignmentModule } from "./modules/admin/resource-assignment/resource-assignment.module";
 import {ProjectsMasterModule} from "./modules/admin/projects/projects.module";
 import { ClientsModule } from "./modules/admin/clients/clients.module";
+import { DocumentStatusModule } from "./modules/admin/document-status/document-status.module";
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ClientsModule } from "./modules/admin/clients/clients.module";
     ScreenCatalogModule,
     SchedulesModule,
     ResourceAssignmentModule,
+    DocumentStatusModule,
     DashboardModule,
     PortfolioOverviewModule,
     ExecutiveModule,

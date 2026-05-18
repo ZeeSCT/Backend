@@ -11,6 +11,7 @@ import {
   ResourceAssignmentScope,
   ScheduleLocationSource,
   ActivityStatus,
+  DocumentImportSource,
 } from "@prisma/client";
 
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -49,268 +50,313 @@ function getLookupKeys(name: string, aliases: string[] = []) {
   return [name, ...aliases].map((value) => normalizeLocationName(value));
 }
 
-async function seedResources() {
-  console.log("Seeding resources...");
-
-  const resources = [
+/**
+ * IMPORTANT:
+ * This must run before any PlanningDocument create/update.
+ * PlanningDocument.workflowStatusCode defaults to "draft",
+ * so "draft" must already exist in DocumentWorkflowStatusLookup.
+ */
+async function seedDocumentWorkflowStatuses() {
+  const documentWorkflowStatuses = [
+    { code: "draft", label: "Draft", tone: "blue", displayOrder: 1 },
+    { code: "submitted", label: "Submitted", tone: "blue", displayOrder: 2 },
     {
-      employeeCode: "RES-SE-001",
-      name: "Ahmed Khan",
-      type: ResourceType.SITE_ENGINEER,
-      designation: "Site Engineer",
-      discipline: "ITS",
-      email: "ahmed.khan@scientechnic.local",
-      phone: "+971500000001",
+      code: "under-review",
+      label: "Under Review",
+      tone: "amber",
+      displayOrder: 3,
     },
-    {
-      employeeCode: "RES-SE-002",
-      name: "Ravi Menon",
-      type: ResourceType.SITE_ENGINEER,
-      designation: "Site Engineer",
-      discipline: "Traffic Systems",
-      email: "ravi.menon@scientechnic.local",
-      phone: "+971500000002",
-    },
-    {
-      employeeCode: "RES-FE-001",
-      name: "Mohammed Ali",
-      type: ResourceType.FIELD_ENGINEER,
-      designation: "Field Engineer",
-      discipline: "Site Execution",
-      email: "mohammed.ali@scientechnic.local",
-      phone: "+971500000003",
-    },
-    {
-      employeeCode: "RES-SUP-001",
-      name: "Suresh Kumar",
-      type: ResourceType.SUPERVISOR,
-      designation: "Supervisor",
-      discipline: "Civil Works",
-      email: "suresh.kumar@scientechnic.local",
-      phone: "+971500000004",
-    },
-    {
-      employeeCode: "RES-SUP-002",
-      name: "Imran Shaikh",
-      type: ResourceType.SUPERVISOR,
-      designation: "Supervisor",
-      discipline: "ITS Installation",
-      email: "imran.shaikh@scientechnic.local",
-      phone: "+971500000005",
-    },
-    {
-      employeeCode: "RES-TECH-001",
-      name: "Arun Joseph",
-      type: ResourceType.TECHNICIAN,
-      designation: "Technician",
-      discipline: "ITS Installation",
-      email: "arun.joseph@scientechnic.local",
-      phone: "+971500000006",
-    },
-    {
-      employeeCode: "RES-TECH-002",
-      name: "Bilal Hassan",
-      type: ResourceType.TECHNICIAN,
-      designation: "Technician",
-      discipline: "Traffic Signal",
-      email: "bilal.hassan@scientechnic.local",
-      phone: "+971500000007",
-    },
-    {
-      employeeCode: "RES-TECH-003",
-      name: "Naveen Raj",
-      type: ResourceType.TECHNICIAN,
-      designation: "Technician",
-      discipline: "ELV",
-      email: "naveen.raj@scientechnic.local",
-      phone: "+971500000008",
-    },
-    {
-      employeeCode: "RES-CREW-001",
-      name: "Civil Installation Crew A",
-      type: ResourceType.CREW,
-      designation: "Civil Crew",
-      discipline: "Civil Works",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-CREW-002",
-      name: "ITS Installation Crew A",
-      type: ResourceType.CREW,
-      designation: "ITS Crew",
-      discipline: "ITS Installation",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-EQ-001",
-      name: "Boom Lift",
-      type: ResourceType.EQUIPMENT,
-      designation: "Equipment",
-      discipline: "Access Equipment",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-EQ-002",
-      name: "Cable Pulling Machine",
-      type: ResourceType.EQUIPMENT,
-      designation: "Equipment",
-      discipline: "Installation Equipment",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-MAT-001",
-      name: "Fiber Optic Cable",
-      type: ResourceType.MATERIAL,
-      designation: "Material",
-      discipline: "Fiber Network",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-VEN-001",
-      name: "Traffic Signal Vendor",
-      type: ResourceType.VENDOR,
-      designation: "Vendor",
-      discipline: "Traffic Systems",
-      email: "vendor.traffic@scientechnic.local",
-      phone: "+971500000009",
-    },
-    {
-      employeeCode: "RES-SUB-001",
-      name: "Civil Works Subcontractor",
-      type: ResourceType.SUBCONTRACTOR,
-      designation: "Subcontractor",
-      discipline: "Civil Works",
-      email: "subcontractor.civil@scientechnic.local",
-      phone: "+971500000010",
-    },
+    { code: "pending", label: "Pending", tone: "amber", displayOrder: 4 },
+    { code: "approved", label: "Approved", tone: "green", displayOrder: 5 },
+    { code: "rejected", label: "Rejected", tone: "red", displayOrder: 6 },
   ];
 
-  for (const resource of resources) {
-    await prisma.resource.upsert({
-      where: {
-        employeeCode: resource.employeeCode,
-      },
+  for (const item of documentWorkflowStatuses) {
+    await prisma.documentWorkflowStatusLookup.upsert({
+      where: { code: item.code },
       update: {
-        name: resource.name,
-        type: resource.type,
-        designation: resource.designation,
-        discipline: resource.discipline,
-        email: resource.email,
-        phone: resource.phone,
+        label: item.label,
+        tone: item.tone,
+        displayOrder: item.displayOrder,
         isActive: true,
       },
       create: {
-        employeeCode: resource.employeeCode,
-        name: resource.name,
-        type: resource.type,
-        designation: resource.designation,
-        discipline: resource.discipline,
-        email: resource.email,
-        phone: resource.phone,
+        code: item.code,
+        label: item.label,
+        tone: item.tone,
+        displayOrder: item.displayOrder,
         isActive: true,
       },
     });
   }
 
-  console.log(`Seeded ${resources.length} resources.`);
+  console.log("Document workflow statuses seeded.");
 }
 
-async function main() {
-  console.log("Starting seed...");
+  async function seedResources() {
+    console.log("Seeding resources...");
 
-  /* ---------------------------------- */
-  /* USERS */
-  /* ---------------------------------- */
+    const resources = [
+      {
+        employeeCode: "RES-SE-001",
+        name: "Ahmed Khan",
+        type: ResourceType.SITE_ENGINEER,
+        designation: "Site Engineer",
+        discipline: "ITS",
+        email: "ahmed.khan@scientechnic.local",
+        phone: "+971500000001",
+      },
+      {
+        employeeCode: "RES-SE-002",
+        name: "Ravi Menon",
+        type: ResourceType.SITE_ENGINEER,
+        designation: "Site Engineer",
+        discipline: "Traffic Systems",
+        email: "ravi.menon@scientechnic.local",
+        phone: "+971500000002",
+      },
+      {
+        employeeCode: "RES-FE-001",
+        name: "Mohammed Ali",
+        type: ResourceType.FIELD_ENGINEER,
+        designation: "Field Engineer",
+        discipline: "Site Execution",
+        email: "mohammed.ali@scientechnic.local",
+        phone: "+971500000003",
+      },
+      {
+        employeeCode: "RES-SUP-001",
+        name: "Suresh Kumar",
+        type: ResourceType.SUPERVISOR,
+        designation: "Supervisor",
+        discipline: "Civil Works",
+        email: "suresh.kumar@scientechnic.local",
+        phone: "+971500000004",
+      },
+      {
+        employeeCode: "RES-SUP-002",
+        name: "Imran Shaikh",
+        type: ResourceType.SUPERVISOR,
+        designation: "Supervisor",
+        discipline: "ITS Installation",
+        email: "imran.shaikh@scientechnic.local",
+        phone: "+971500000005",
+      },
+      {
+        employeeCode: "RES-TECH-001",
+        name: "Arun Joseph",
+        type: ResourceType.TECHNICIAN,
+        designation: "Technician",
+        discipline: "ITS Installation",
+        email: "arun.joseph@scientechnic.local",
+        phone: "+971500000006",
+      },
+      {
+        employeeCode: "RES-TECH-002",
+        name: "Bilal Hassan",
+        type: ResourceType.TECHNICIAN,
+        designation: "Technician",
+        discipline: "Traffic Signal",
+        email: "bilal.hassan@scientechnic.local",
+        phone: "+971500000007",
+      },
+      {
+        employeeCode: "RES-TECH-003",
+        name: "Naveen Raj",
+        type: ResourceType.TECHNICIAN,
+        designation: "Technician",
+        discipline: "ELV",
+        email: "naveen.raj@scientechnic.local",
+        phone: "+971500000008",
+      },
+      {
+        employeeCode: "RES-CREW-001",
+        name: "Civil Installation Crew A",
+        type: ResourceType.CREW,
+        designation: "Civil Crew",
+        discipline: "Civil Works",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-CREW-002",
+        name: "ITS Installation Crew A",
+        type: ResourceType.CREW,
+        designation: "ITS Crew",
+        discipline: "ITS Installation",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-EQ-001",
+        name: "Boom Lift",
+        type: ResourceType.EQUIPMENT,
+        designation: "Equipment",
+        discipline: "Access Equipment",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-EQ-002",
+        name: "Cable Pulling Machine",
+        type: ResourceType.EQUIPMENT,
+        designation: "Equipment",
+        discipline: "Installation Equipment",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-MAT-001",
+        name: "Fiber Optic Cable",
+        type: ResourceType.MATERIAL,
+        designation: "Material",
+        discipline: "Fiber Network",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-VEN-001",
+        name: "Traffic Signal Vendor",
+        type: ResourceType.VENDOR,
+        designation: "Vendor",
+        discipline: "Traffic Systems",
+        email: "vendor.traffic@scientechnic.local",
+        phone: "+971500000009",
+      },
+      {
+        employeeCode: "RES-SUB-001",
+        name: "Civil Works Subcontractor",
+        type: ResourceType.SUBCONTRACTOR,
+        designation: "Subcontractor",
+        discipline: "Civil Works",
+        email: "subcontractor.civil@scientechnic.local",
+        phone: "+971500000010",
+      },
+    ];
 
-  const passwordHash = await bcrypt.hash(
-    process.env.SEED_ADMIN_PASSWORD || "Admin@123",
-    10,
-  );
+    for (const resource of resources) {
+      await prisma.resource.upsert({
+        where: {
+          employeeCode: resource.employeeCode,
+        },
+        update: {
+          name: resource.name,
+          type: resource.type,
+          designation: resource.designation,
+          discipline: resource.discipline,
+          email: resource.email,
+          phone: resource.phone,
+          isActive: true,
+        },
+        create: {
+          employeeCode: resource.employeeCode,
+          name: resource.name,
+          type: resource.type,
+          designation: resource.designation,
+          discipline: resource.discipline,
+          email: resource.email,
+          phone: resource.phone,
+          isActive: true,
+        },
+      });
+    }
 
-  const admin = await prisma.user.upsert({
-    where: { email: "admin@example.com" },
-    update: {
-      name: "Admin User",
-      role: UserRole.SUPER_ADMIN,
-      isActive: true,
-    },
-    create: {
-      name: "Admin User",
-      email: "admin@example.com",
-      passwordHash,
-      role: UserRole.SUPER_ADMIN,
-      isActive: true,
-    },
-  });
+    console.log(`Seeded ${resources.length} resources.`);
+  }
 
-  const pm = await prisma.user.upsert({
-    where: { email: "pm@example.com" },
-    update: {
-      name: "A. Karim",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "A. Karim",
-      email: "pm@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+  async function main() {
+    console.log("Starting seed...");
 
-  const pm2 = await prisma.user.upsert({
-    where: { email: "pm2@example.com" },
-    update: {
-      name: "N. Rashid",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "N. Rashid",
-      email: "pm2@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+    await seedDocumentWorkflowStatuses();
 
-  const pm3 = await prisma.user.upsert({
-    where: { email: "pm3@example.com" },
-    update: {
-      name: "S. Mehta",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "S. Mehta",
-      email: "pm3@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+    /* ---------------------------------- */
+    /* USERS */
+    /* ---------------------------------- */
 
-  const pm4 = await prisma.user.upsert({
-    where: { email: "pm4@example.com" },
-    update: {
-      name: "F. Al Hamad",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "F. Al Hamad",
-      email: "pm4@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+    const passwordHash = await bcrypt.hash(
+      process.env.SEED_ADMIN_PASSWORD || "Admin@123",
+      10,
+    );
+
+    const admin = await prisma.user.upsert({
+      where: { email: "admin@example.com" },
+      update: {
+        name: "Admin User",
+        role: UserRole.SUPER_ADMIN,
+        isActive: true,
+      },
+      create: {
+        name: "Admin User",
+        email: "admin@example.com",
+        passwordHash,
+        role: UserRole.SUPER_ADMIN,
+        isActive: true,
+      },
+    });
+
+    const pm = await prisma.user.upsert({
+      where: { email: "pm@example.com" },
+      update: {
+        name: "A. Karim",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "A. Karim",
+        email: "pm@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
+
+    const pm2 = await prisma.user.upsert({
+      where: { email: "pm2@example.com" },
+      update: {
+        name: "N. Rashid",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "N. Rashid",
+        email: "pm2@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
+
+    const pm3 = await prisma.user.upsert({
+      where: { email: "pm3@example.com" },
+      update: {
+        name: "S. Mehta",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "S. Mehta",
+        email: "pm3@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
+
+    const pm4 = await prisma.user.upsert({
+      where: { email: "pm4@example.com" },
+      update: {
+        name: "F. Al Hamad",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "F. Al Hamad",
+        email: "pm4@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
 
   /* ---------------------------------- */
   /* PORTFOLIO CATEGORIES */
@@ -403,6 +449,7 @@ async function main() {
     planType?: string;
     stageCode?: string;
     approvalStatusCode?: string;
+    workflowStatusCode?: string;
     approver?: string;
     submittedAt?: Date;
     dueDate?: Date;
@@ -434,15 +481,12 @@ async function main() {
     activityName: string;
     discipline?: string;
     location?: string;
-
-    // New road/street fields
     roadLocationName?: string;
     rawRoadCode?: string;
     packageName?: string;
     workSectionName?: string;
     assetReference?: string;
     locationSource?: ScheduleLocationSource;
-
     durationDays?: number;
     plannedStart?: Date;
     plannedFinish?: Date;
@@ -464,8 +508,6 @@ async function main() {
     delayDays?: number;
     linkedActivity?: string;
     healthStatus?: HealthStatus;
-
-    // New road/street fields
     roadLocationName?: string;
     rawRoadCode?: string;
     packageName?: string;
@@ -585,61 +627,152 @@ async function main() {
 
     const documentApprovalStatuses = [
       {
-        code: "approved",
-        label: "Approved",
-        severity: "success",
+        code: "in-preparation",
+        label: "In preparation",
+        severity: "purple",
         displayOrder: 1,
+      },
+      {
+        code: "not-submitted",
+        label: "Not Submitted",
+        severity: "purple",
+        displayOrder: 2,
+      },
+      {
+        code: "internal-review",
+        label: "Internal Review",
+        severity: "amber",
+        displayOrder: 3,
       },
       {
         code: "under-review",
         label: "Under review",
-        severity: "info",
-        displayOrder: 2,
-      },
-      {
-        code: "in-preparation",
-        label: "In preparation",
-        severity: "neutral",
-        displayOrder: 3,
-      },
-      {
-        code: "overdue",
-        label: "Overdue",
-        severity: "danger",
+        severity: "amber",
         displayOrder: 4,
+      },
+      {
+        code: "consultant-review",
+        label: "Consultant Review",
+        severity: "amber",
+        displayOrder: 5,
+      },
+      {
+        code: "client-pending",
+        label: "Client Pending",
+        severity: "red",
+        displayOrder: 6,
       },
       {
         code: "at-risk",
         label: "At risk",
-        severity: "warning",
-        displayOrder: 5,
+        severity: "amber",
+        displayOrder: 7,
+      },
+      {
+        code: "overdue",
+        label: "Overdue",
+        severity: "red",
+        displayOrder: 8,
+      },
+      {
+        code: "resubmit",
+        label: "Resubmit",
+        severity: "red",
+        displayOrder: 9,
+      },
+      {
+        code: "approved",
+        label: "Approved",
+        severity: "green",
+        displayOrder: 10,
       },
       {
         code: "rejected",
         label: "Rejected",
-        severity: "danger",
-        displayOrder: 6,
+        severity: "red",
+        displayOrder: 11,
+      },
+      {
+        code: "closed",
+        label: "Closed",
+        severity: "green",
+        displayOrder: 12,
       },
     ];
 
-    for (const status of documentApprovalStatuses) {
+    for (const item of documentApprovalStatuses) {
       await prisma.documentApprovalStatusLookup.upsert({
-        where: { code: status.code },
+        where: { code: item.code },
         update: {
-          label: status.label,
-          severity: status.severity,
-          displayOrder: status.displayOrder,
+          label: item.label,
+          severity: item.severity,
+          displayOrder: item.displayOrder,
           isActive: true,
         },
         create: {
-          code: status.code,
-          label: status.label,
-          severity: status.severity,
-          displayOrder: status.displayOrder,
+          code: item.code,
+          label: item.label,
+          severity: item.severity,
+          displayOrder: item.displayOrder,
           isActive: true,
         },
       });
     }
+
+    const documentDisciplines = [
+      { code: "its", label: "ITS", displayOrder: 1 },
+      { code: "civil", label: "Civil", displayOrder: 2 },
+      { code: "electrical", label: "Electrical", displayOrder: 3 },
+      { code: "testing", label: "Testing", displayOrder: 4 },
+      { code: "material", label: "Material", displayOrder: 5 },
+      { code: "om", label: "O&M", displayOrder: 6 },
+    ];
+
+    for (const item of documentDisciplines) {
+      await prisma.documentDisciplineLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: item.code,
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    const documentOwners = [
+      { code: "engineering", label: "Engineering", displayOrder: 1 },
+      { code: "document-control", label: "Document Control", displayOrder: 2 },
+      { code: "client", label: "Client", displayOrder: 3 },
+      { code: "consultant", label: "Consultant", displayOrder: 4 },
+      { code: "qaqc", label: "QA/QC", displayOrder: 5 },
+      { code: "site-team", label: "Site Team", displayOrder: 6 },
+      { code: "procurement", label: "Procurement", displayOrder: 7 },
+    ];
+
+    for (const item of documentOwners) {
+      await prisma.documentOwnerLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: item.code,
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    await seedDocumentWorkflowStatuses();
 
     const projectHealthStatuses = [
       {
@@ -847,6 +980,7 @@ async function main() {
         planType: doc.planType ?? "BASELINE",
         stageCode: doc.stageCode ?? "pre-construction",
         approvalStatusCode,
+        workflowStatusCode: doc.workflowStatusCode ?? "draft",
         approver: doc.approver ?? null,
         submittedAt: doc.submittedAt ?? null,
         dueDate: doc.dueDate ?? null,
@@ -1411,6 +1545,7 @@ async function main() {
         planType: record.stageCode,
         stageCode: record.stageCode,
         approvalStatusCode: record.approvalStatusCode,
+        workflowStatusCode: "draft",
         approver: record.approver,
         submittedAt: record.submittedAt,
         dueDate,
@@ -2872,6 +3007,184 @@ await prisma.systemSetting.upsert({
       },
     ],
   });
+
+  /* ---------------------------------- */
+  /* DOCUMENT CONTROLLER SAMPLE DOCUMENTS */
+  /* ---------------------------------- */
+
+  const itsProject = await prisma.project.findFirst({
+    where: {
+      OR: [{ code: "PRJ-001" }, { portfolio: "its" }],
+    },
+  });
+
+  if (itsProject) {
+    const documents = [
+      {
+        documentNo: "ITS-DRW-001",
+        title: "Traffic Signal Controller Cabinet Layout",
+        fileName: "Traffic Signal Controller Cabinet Layout.pdf",
+        revision: "R03",
+        disciplineCode: "its",
+        ownerCode: "engineering",
+        workflowStatusCode: "under-review",
+        approvalStatusCode: "client-pending",
+        dueDate: new Date("2026-03-18"),
+        progressPct: 68,
+        lastUpdate: "Comment received",
+        remarks: "Pending client comments on cabinet layout.",
+      },
+      {
+        documentNo: "ITS-MST-014",
+        title: "Master Testing & Commissioning Procedure",
+        fileName: "Master Testing & Commissioning Procedure.pdf",
+        revision: "R01",
+        disciplineCode: "testing",
+        ownerCode: "qaqc",
+        workflowStatusCode: "submitted",
+        approvalStatusCode: "consultant-review",
+        dueDate: new Date("2026-03-20"),
+        progressPct: 45,
+        lastUpdate: "Submitted to consultant",
+        remarks: "Submitted to consultant for review.",
+      },
+      {
+        documentNo: "ITS-CAL-008",
+        title: "Camera Calibration Report Package",
+        fileName: "Camera Calibration Report Package.pdf",
+        revision: "R02",
+        disciplineCode: "its",
+        ownerCode: "site-team",
+        workflowStatusCode: "approved",
+        approvalStatusCode: "closed",
+        dueDate: new Date("2026-03-12"),
+        progressPct: 100,
+        lastUpdate: "Approved with comments",
+        remarks: "Approved with comments.",
+      },
+      {
+        documentNo: "ITS-MAT-021",
+        title: "Material Submittal for Field Cabinets",
+        fileName: "Material Submittal for Field Cabinets.pdf",
+        revision: "R04",
+        disciplineCode: "material",
+        ownerCode: "procurement",
+        workflowStatusCode: "rejected",
+        approvalStatusCode: "resubmit",
+        dueDate: new Date("2026-03-17"),
+        progressPct: 28,
+        lastUpdate: "Missing compliance sheet",
+        remarks: "Compliance sheet missing. Resubmission required.",
+      },
+      {
+        documentNo: "ITS-SHOP-030",
+        title: "Shop Drawing - Gantry Pole Foundation",
+        fileName: "Shop Drawing - Gantry Pole Foundation.pdf",
+        revision: "R02",
+        disciplineCode: "civil",
+        ownerCode: "engineering",
+        workflowStatusCode: "pending",
+        approvalStatusCode: "internal-review",
+        dueDate: new Date("2026-03-22"),
+        progressPct: 35,
+        lastUpdate: "Internal checker assigned",
+        remarks: "Internal checker assigned.",
+      },
+      {
+        documentNo: "ITS-OM-006",
+        title: "Operation & Maintenance Manual Draft",
+        fileName: "Operation & Maintenance Manual Draft.pdf",
+        revision: "R00",
+        disciplineCode: "om",
+        ownerCode: "document-control",
+        workflowStatusCode: "draft",
+        approvalStatusCode: "not-submitted",
+        dueDate: new Date("2026-03-25"),
+        progressPct: 18,
+        lastUpdate: "Draft preparation",
+        remarks: "Draft preparation in progress.",
+      },
+    ];
+
+    for (const item of documents) {
+      const existingDocument = await prisma.planningDocument.findFirst({
+        where: {
+          projectId: itsProject.id,
+          documentNo: item.documentNo,
+        },
+      });
+
+      const documentData = {
+        title: item.title,
+        fileName: item.fileName,
+        revision: item.revision,
+
+        planType: "DOCUMENT_REGISTER",
+        status: RecordStatus.ACTIVE,
+        uploadedBy: admin.name,
+
+        dueDate: item.dueDate,
+        progressPct: item.progressPct,
+        lastUpdate: item.lastUpdate,
+        remarks: item.remarks,
+        importSource: DocumentImportSource.MANUAL,
+        isActive: true,
+
+        stage: {
+          connect: {
+            code: "design",
+          },
+        },
+
+        discipline: {
+          connect: {
+            code: item.disciplineCode,
+          },
+        },
+
+        owner: {
+          connect: {
+            code: item.ownerCode,
+          },
+        },
+
+        workflowStatus: {
+          connect: {
+            code: item.workflowStatusCode,
+          },
+        },
+
+        approvalStatus: {
+          connect: {
+            code: item.approvalStatusCode,
+          },
+        },
+      };
+
+      if (existingDocument) {
+        await prisma.planningDocument.update({
+          where: {
+            id: existingDocument.id,
+          },
+          data: documentData,
+        });
+      } else {
+        await prisma.planningDocument.create({
+          data: {
+            project: {
+              connect: {
+                id: itsProject.id,
+              },
+            },
+            documentNo: item.documentNo,
+            ...documentData,
+          },
+        });
+      }
+    }
+
+    console.log("Document controller sample documents seeded.");
+  }
 
   await seedSampleScheduleImportWithLocations();
   await seedFieldResourcesAndAssignments();
