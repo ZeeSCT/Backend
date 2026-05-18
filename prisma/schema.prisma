@@ -61,6 +61,27 @@ enum TenderStage {
   NO_BID
 }
 
+enum MaterialAvailabilityStatus {
+  NOT_ASSESSED
+  AVAILABLE
+  PARTIAL
+  SHORTAGE
+}
+
+enum MaterialDeliveryStatus {
+  NOT_PLANNED
+  DELIVERED
+  PENDING
+  DELAYED
+}
+
+enum LabourReadinessStatus {
+  NOT_ASSESSED
+  FULL_CREW
+  SHORT
+}
+
+
 /**
  * --------------------------------------------------------------------------
  */
@@ -89,9 +110,9 @@ enum ActivityStatus {
 }
 
 enum ResourceType {
+  RESOURCE
   PERSON
   TEAM
-  RESOURCE
   SITE_ENGINEER
   FIELD_ENGINEER
   SUPERVISOR
@@ -516,11 +537,12 @@ model ActivityResourceAssignment {
   plannedStart  DateTime?
   plannedFinish DateTime?
   remarks       String?
+  labourStatus LabourReadinessStatus @default(NOT_ASSESSED)
 
   project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activity ScheduleActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   resource Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -530,6 +552,7 @@ model ActivityResourceAssignment {
   @@index([resourceId])
   @@index([plannedStart])
   @@index([plannedFinish])
+  @@index([labourStatus])
 }
 
 model ActivityStatusUpdate {
@@ -963,6 +986,9 @@ model PlanningResource {
   availableQty Int          @default(0)
   requiredDate DateTime?
   healthStatus HealthStatus @default(ON_TRACK)
+  materialStatus MaterialAvailabilityStatus @default(NOT_ASSESSED)
+  deliveryStatus MaterialDeliveryStatus @default(NOT_PLANNED)
+  labourStatus   LabourReadinessStatus @default(NOT_ASSESSED)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -973,6 +999,9 @@ model PlanningResource {
   @@index([documentId])
   @@index([activityId])
   @@index([healthStatus])
+  @@index([materialStatus])
+  @@index([deliveryStatus]) 
+   @@index([labourStatus])
 }
 
 /**

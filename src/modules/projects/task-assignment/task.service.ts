@@ -2,16 +2,22 @@ import { Injectable, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { ActivityStatus, Prisma, RecordStatus } from "@prisma/client";
 
+export enum TaskBoardFilter {
+  ALL = "all",
+  OVERDUE = "overdue",
+  BLOCKED = "blocked",
+}
+
 @Injectable()
 export class TaskAssignmentBoardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getProjects(category = "all") {
+  async getProjects(category = TaskBoardFilter.ALL) {
     const where: Prisma.ProjectWhereInput = {
       status: RecordStatus.ACTIVE,
     };
 
-    if (category && category !== "all") {
+    if (category && category !== TaskBoardFilter.ALL) {
       where.OR = [
         { portfolio: category },
         { portfolioCategory: { code: category } },
@@ -47,13 +53,12 @@ export class TaskAssignmentBoardService {
     }));
   }
 
-  async getSummary(projectId: string, filter: string, search: string) {
+  async getSummary(projectId: string, filter: TaskBoardFilter, search: string) {
     if (!projectId) {
       throw new BadRequestException("projectId is required");
     }
 
-    const baseWhere = this.buildTaskWhere(projectId, "all", search);
-
+    const baseWhere = this.buildTaskWhere(projectId, filter, search);
     const [
       totalTasks,
       completedTasks,
@@ -99,7 +104,7 @@ export class TaskAssignmentBoardService {
     };
   }
 
-  async getTasks(projectId: string, filter: string, search: string) {
+  async getTasks(projectId: string, filter: TaskBoardFilter, search: string) {
     if (!projectId) {
       throw new BadRequestException("projectId is required");
     }
@@ -130,7 +135,7 @@ export class TaskAssignmentBoardService {
 
   private buildTaskWhere(
     projectId: string,
-    filter: string,
+    filter: TaskBoardFilter,
     search: string,
   ): Prisma.ScheduleActivityWhereInput {
     const where: Prisma.ScheduleActivityWhereInput = {
@@ -138,12 +143,18 @@ export class TaskAssignmentBoardService {
       isMilestone: false,
     };
 
-    if (filter === "overdue") {
-      where.status = ActivityStatus.DELAYED;
-    }
+    switch (filter) {
+      case TaskBoardFilter.OVERDUE:
+        where.status = ActivityStatus.DELAYED;
+        break;
 
-    if (filter === "blocked") {
-      where.status = ActivityStatus.BLOCKED;
+      case TaskBoardFilter.BLOCKED:
+        where.status = ActivityStatus.BLOCKED;
+        break;
+
+      case TaskBoardFilter.ALL:
+      default:
+        break;
     }
 
     if (search?.trim()) {
@@ -168,23 +179,23 @@ export class TaskAssignmentBoardService {
   }
 
   private normalizeTask(task: any) {
-  const latestProgress = task.statusUpdates?.[0];
-  const firstAssignment = task.resourceAssignments?.[0];
-  const resource = firstAssignment?.resource;
+    const latestProgress = task.statusUpdates?.[0];
+    const firstAssignment = task.resourceAssignments?.[0];
+    const resource = firstAssignment?.resource;
 
-  return {
-    id: task.id,
-    projectId: task.projectId,
-    task: task.activityName,
-    assignee: resource?.name ?? null,
-    assigneeInitials: resource?.name ? this.getInitials(resource.name) : null,
-    dueDate: firstAssignment?.plannedFinish ?? task.finishDate ?? null,
-    progress: latestProgress?.progressPercentage ?? null,
-    status: latestProgress?.status ?? task.status,
-    progressColorClass: latestProgress?.progressColorClass ?? null,
-    statusBadgeClass: latestProgress?.statusBadgeClass ?? null,
-  };
-}
+    return {
+      id: task.id,
+      projectId: task.projectId,
+      task: task.activityName,
+      assignee: resource?.name ?? null,
+      assigneeInitials: resource?.name ? this.getInitials(resource.name) : null,
+      dueDate: firstAssignment?.plannedFinish ?? task.finishDate ?? null,
+      progress: latestProgress?.progressPercentage ?? null,
+      status: latestProgress?.status ?? task.status,
+      progressColorClass: latestProgress?.progressColorClass ?? null,
+      statusBadgeClass: latestProgress?.statusBadgeClass ?? null,
+    };
+  }
   private getInitials(name: string) {
     return name
       .split(" ")

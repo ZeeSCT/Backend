@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
-import { MaterialResourceService } from "./service";
+import { MaterialResourceService, MaterialFilter } from "./service";
 
 @ApiTags("Project Management Screens")
 @Controller("api/v1/projects/material-resource")
@@ -8,7 +8,7 @@ export class MaterialResourceController {
   constructor(private readonly service: MaterialResourceService) {}
 
   @Get("projects")
-  getProjects(@Query("category") category = "all") {
+  getProjects(@Query("category") category = MaterialFilter.ALL) {
     return this.service.getProjects(category);
   }
 
@@ -20,7 +20,7 @@ export class MaterialResourceController {
   @Get("materials")
   getMaterials(
     @Query("projectId") projectId: string,
-    @Query("filter") filter: "all" | "shortages" | "pending" = "all",
+    @Query("filter") filter: MaterialFilter = MaterialFilter.ALL,
   ) {
     return this.service.getMaterials(projectId, filter);
   }
