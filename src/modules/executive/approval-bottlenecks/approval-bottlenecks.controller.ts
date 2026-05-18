@@ -11,7 +11,7 @@ import { ApprovalBottlenecksService } from "./approval-bottlenecks.service";
 @ApiTags("Approval Bottlenecks")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("api/v1/executive/approval-bottlenecks")
+@Controller("/executive/approval-bottlenecks")
 export class ApprovalBottlenecksController {
   constructor(
     private readonly approvalBottlenecksService: ApprovalBottlenecksService,

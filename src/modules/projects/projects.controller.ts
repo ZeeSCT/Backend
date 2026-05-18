@@ -10,7 +10,7 @@ import { ProjectsService } from "./projects.service";
 @ApiTags("Project Management Screens")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("api/v1/projects")
+@Controller("/projects")
 export class ProjectsController {
   constructor(private service: ProjectsService) {}
   @Get() findAll() {

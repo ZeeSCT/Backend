@@ -5,7 +5,7 @@ import { MaintenanceService } from './maintenance.service';
 @ApiTags('Maintenance Screens')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/maintenance')
+@Controller('/maintenance')
 export class MaintenanceController{
   constructor(private service:MaintenanceService){}
   @Get() findAll(){return this.service.findAll()}

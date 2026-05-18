@@ -5,7 +5,7 @@ import { ProcurementService } from './procurement.service';
 @ApiTags('Procurement Screens')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/procurement')
+@Controller('/procurement')
 export class ProcurementController{
   constructor(private service:ProcurementService){}
   @Get() findAll(){return this.service.findAll()}

@@ -5,7 +5,7 @@ import { UsersService } from "./users.service";
 @ApiTags("Users")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("api/v1/users")
+@Controller("/users")
 export class UsersController {
   constructor(private service: UsersService) {}
   @Get() findAll() {

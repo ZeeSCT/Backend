@@ -22,7 +22,7 @@ import { UpdateClientDto } from "./dto/update-client.dto";
 @ApiTags("Clients")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller("api/v1/clients")
+@Controller("/clients")
 export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 

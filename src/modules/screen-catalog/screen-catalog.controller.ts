@@ -5,7 +5,7 @@ import { SCREEN_CATALOG } from '@/common/dashboard/screen-catalog';
 @ApiTags('Screen Catalog')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/screens')
+@Controller('/screens')
 export class ScreenCatalogController {
   @Get()
   @ApiOperation({ summary: 'Frontend screen catalog: 6 modules and 41 HTML dashboard screens' })

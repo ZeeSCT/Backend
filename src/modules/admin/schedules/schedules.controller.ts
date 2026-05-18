@@ -26,7 +26,7 @@ import { memoryStorage } from "multer";
 import { SchedulesService } from "./schedules.service";
 
 @ApiTags("Schedules")
-@Controller("api/v1/schedules")
+@Controller("/schedules")
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
