@@ -1,5 +1,7 @@
 // src/modules/schedules/types/schedule-import.types.ts
 
+import { ScheduleLocationSource } from "@prisma/client/edge";
+
 export const REQUIRED_SCHEDULE_HEADERS = [
   "WBS Level",
   "WBS code",
@@ -22,6 +24,11 @@ export interface ParsedWbsItem {
   startDate: Date | null;
   finishDate: Date | null;
   totalFloat: number | null;
+
+  roadLocationId?: string | null;
+  rawLocationName?: string | null;
+  rawRoadCode?: string | null;
+  locationSource?: ScheduleLocationSource;
 }
 
 export interface ParsedScheduleActivity {
@@ -35,6 +42,14 @@ export interface ParsedScheduleActivity {
   totalFloat: number | null;
   isMilestone: boolean;
   isCritical: boolean;
+
+  roadLocationId?: string | null;
+  rawLocationName?: string | null;
+  rawRoadCode?: string | null;
+  packageName?: string | null;
+  workSectionName?: string | null;
+  assetReference?: string | null;
+  locationSource?: ScheduleLocationSource;
 }
 
 export interface ParsedMilestone {
@@ -42,6 +57,14 @@ export interface ParsedMilestone {
   milestoneCode: string;
   name: string;
   plannedDate: Date | null;
+
+  roadLocationId?: string | null;
+  rawLocationName?: string | null;
+  rawRoadCode?: string | null;
+  packageName?: string | null;
+  workSectionName?: string | null;
+  assetReference?: string | null;
+  locationSource?: ScheduleLocationSource;
 }
 
 export interface ParsedImportError {

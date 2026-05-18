@@ -1,7 +1,7 @@
-// src/modules/schedules/schedule-excel-parser.service.ts
-
 import { Injectable } from "@nestjs/common";
 import * as ExcelJS from "exceljs";
+import { ScheduleLocationSource } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
 import {
   ParsedImportError,
   ParsedMilestone,
@@ -11,13 +11,22 @@ import {
   REQUIRED_SCHEDULE_HEADERS,
 } from "./types/schedule-import.types";
 
+type RoadLocationLookupItem = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  roadCode: string;
+  aliases: string[];
+};
+
 @Injectable()
 export class ScheduleExcelParserService {
+  constructor(private readonly prisma: PrismaService) {}
+
   async parse(
     fileBuffer: Express.Multer.File["buffer"],
   ): Promise<ParsedScheduleImport> {
     const workbook = new ExcelJS.Workbook();
-
     const excelBuffer = Buffer.from(fileBuffer);
 
     await workbook.xlsx.load(
@@ -41,7 +50,6 @@ export class ScheduleExcelParserService {
         ],
       };
     }
-
     const errors: ParsedImportError[] = [];
     const wbsItems: ParsedWbsItem[] = [];
     const activities: ParsedScheduleActivity[] = [];
@@ -60,20 +68,29 @@ export class ScheduleExcelParserService {
       };
     }
 
-    /**
-     * This stack is the important fix.
-     *
-     * Instead of relying on one currentLeafWbs variable, we keep the latest WBS
-     * row seen at each level.
-     *
-     * Example:
-     * Level 2: 2 GENERAL
-     * Level 3: 2.5 CONTRACT
-     *
-     * Activities after 2.5 will be linked to 2.5 until another WBS row changes
-     * the stack.
-     */
+    const roadLocationLookup = await this.buildRoadLocationLookup();
+
     const latestWbsByLevel = new Map<number, ParsedWbsItem>();
+
+    let currentPackageName: string | null = null;
+
+    let currentLocation: RoadLocationLookupItem | null = null;
+    let currentLocationLevel: number | null = null;
+    let currentRawLocationName: string | null = null;
+
+    let currentWorkSectionName: string | null = null;
+    let currentAssetReference: string | null = null;
+
+    const clearLocationContext = () => {
+      currentLocation = null;
+      currentLocationLevel = null;
+      currentRawLocationName = null;
+    };
+
+    const clearWorkSectionContext = () => {
+      currentWorkSectionName = null;
+      currentAssetReference = null;
+    };
 
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
@@ -92,7 +109,7 @@ export class ScheduleExcelParserService {
       const rawTotalFloat = this.getCellText(row, headerMap["Total Float"]);
 
       const wbsLevel = this.parseInteger(rawWbsLevel);
-      const wbsCode = rawWbsCode.trim();
+      const rawWbsCodeTrimmed = rawWbsCode.trim();
       const activityCodeCandidate = rawActivityCode.trim();
 
       const duration = this.parseOptionalInteger(rawDuration);
@@ -100,50 +117,87 @@ export class ScheduleExcelParserService {
       const finishDate = this.parseDate(rawFinishValue);
       const totalFloat = this.parseOptionalInteger(rawTotalFloat);
 
-      const activityCodeLooksValid =
-        this.looksLikeActivityCode(activityCodeCandidate);
+      const activityCodeLooksValid = this.looksLikeActivityCode(
+        activityCodeCandidate,
+      );
+
+      const resolvedWbsName = this.resolveWbsName(
+        row,
+        headerMap,
+        rawActivityNameFromHeader,
+      );
+
+      const resolvedActivityName = this.resolveActivityName(
+        row,
+        headerMap,
+        rawActivityNameFromHeader,
+      );
+
+      const hasValidWbsCode =
+        rawWbsCodeTrimmed.length > 0 &&
+        this.looksLikeWbsCode(rawWbsCodeTrimmed);
 
       /**
-       * Important fix:
+       * Important:
        *
-       * A WBS row should be identified by:
-       * - valid WBS Level
-       * - valid WBS code like 1, 1.3, 2.5, 3.2.1
+       * Your Excel rows can have:
+       * 7    AL KHAIL STREET
+       * 8    TT EXECUTION FOR 25M POLE - D68/CCTV-G-02
        *
-       * We should not reject it just because some shifted export placed text
-       * in the Activity ID column.
-       *
-       * This is what prevents rows like:
-       * 2    2      GENERAL
-       * 3    2.5    CONTRACT
-       *
-       * from being skipped.
+       * Those rows may not have a proper WBS code.
+       * So we now allow a WBS/context row when:
+       * - WBS Level exists
+       * - and it has either a valid WBS code OR a meaningful row name
+       * - and it is not a real activity row
        */
       const isWbsRow =
         wbsLevel !== null &&
-        wbsCode.length > 0 &&
-        this.looksLikeWbsCode(wbsCode);
+        (hasValidWbsCode ||
+          (!activityCodeLooksValid && resolvedWbsName.trim().length > 0));
 
       const isActivityRow = !isWbsRow && activityCodeLooksValid;
 
-      /**
-       * Many Primavera/MS Project exports contain title, blank, spacing,
-       * or continuation rows. These should not fail the whole import.
-       */
       if (!isWbsRow && !isActivityRow) {
         return;
       }
 
-      const activityCode = isActivityRow ? activityCodeCandidate : "";
-
-      const activityName = isWbsRow
-        ? this.resolveWbsName(row, headerMap, rawActivityNameFromHeader)
-        : this.resolveActivityName(row, headerMap, rawActivityNameFromHeader);
+      if (
+        isWbsRow &&
+        wbsLevel !== null &&
+        currentLocationLevel !== null &&
+        wbsLevel <= currentLocationLevel
+      ) {
+        clearLocationContext();
+        clearWorkSectionContext();
+      }
 
       if (isWbsRow) {
         const rowErrors: ParsedImportError[] = [];
 
-        const wbsName = activityName || `WBS ${wbsCode}`;
+        const wbsName =
+          resolvedWbsName ||
+          `WBS ${rawWbsCodeTrimmed || `${wbsLevel}.${rowNumber}`}`;
+
+        const matchedRoadLocation = this.findRoadLocationByName(
+          wbsName,
+          roadLocationLookup,
+        );
+
+        if (this.isPackageRow(wbsName)) {
+          currentPackageName = wbsName;
+          clearLocationContext();
+          clearWorkSectionContext();
+        }
+
+        if (matchedRoadLocation) {
+          currentLocation = matchedRoadLocation;
+          currentLocationLevel = wbsLevel;
+          currentRawLocationName = wbsName;
+          clearWorkSectionContext();
+        } else if (this.isLikelyWorkSectionRow(wbsName)) {
+          currentWorkSectionName = wbsName;
+          currentAssetReference = this.extractAssetReference(wbsName);
+        }
 
         if (duration !== null && duration < 0) {
           rowErrors.push({
@@ -169,7 +223,29 @@ export class ScheduleExcelParserService {
         }
 
         const parent = this.findNearestParentWbs(wbsLevel, latestWbsByLevel);
+
+        /**
+         * If Excel has no WBS code, generate one.
+         * This prevents rows like AL KHAIL STREET from being skipped.
+         */
+        const wbsCode = hasValidWbsCode
+          ? rawWbsCodeTrimmed
+          : this.makeGeneratedWbsCode(rowNumber, wbsLevel, wbsName);
+
         const tempKey = `${rowNumber}:${wbsCode}`;
+
+        const rowRoadCode =
+          matchedRoadLocation?.roadCode ??
+          currentLocation?.roadCode ??
+          this.extractRoadCode(wbsName);
+
+        const rowLocationSource = matchedRoadLocation
+          ? ScheduleLocationSource.EXCEL_PARENT_ROW
+          : currentLocation
+            ? ScheduleLocationSource.EXCEL_PARENT_ROW
+            : rowRoadCode
+              ? ScheduleLocationSource.EXCEL_WORK_SECTION
+              : ScheduleLocationSource.NONE;
 
         const wbsItem: ParsedWbsItem = {
           tempKey,
@@ -182,26 +258,15 @@ export class ScheduleExcelParserService {
           startDate,
           finishDate,
           totalFloat,
+
+          rawLocationName:
+            matchedRoadLocation?.name ?? currentRawLocationName ?? null,
+          rawRoadCode: rowRoadCode ?? null,
+          locationSource: rowLocationSource,
         };
 
         wbsItems.push(wbsItem);
 
-        /**
-         * Important fix:
-         *
-         * When a new WBS row is encountered, clear any deeper WBS levels.
-         *
-         * Example:
-         * Existing stack:
-         * level 2 -> 1.3
-         * level 3 -> 1.3.3
-         *
-         * New row:
-         * level 2 -> 2 GENERAL
-         *
-         * Then level 3 and below must be cleared, otherwise activities below
-         * GENERAL may remain attached to old 1.3.3.
-         */
         this.clearDeeperWbsLevels(latestWbsByLevel, wbsLevel);
         latestWbsByLevel.set(wbsLevel, wbsItem);
 
@@ -210,6 +275,9 @@ export class ScheduleExcelParserService {
 
       if (isActivityRow) {
         const rowErrors: ParsedImportError[] = [];
+
+        const activityCode = activityCodeCandidate;
+        const activityName = resolvedActivityName;
 
         if (!activityName) {
           rowErrors.push({
@@ -262,14 +330,6 @@ export class ScheduleExcelParserService {
           return;
         }
 
-        /**
-         * Important fix:
-         *
-         * Do not classify milestone using:
-         * activityCode.startsWith("MS-")
-         *
-         * Some real activities can have an MS-* code convention.
-         */
         const isMilestone = this.detectMilestone({
           duration,
           startDate,
@@ -277,6 +337,17 @@ export class ScheduleExcelParserService {
         });
 
         const isCritical = totalFloat !== null && totalFloat <= 0;
+
+        const activityRawRoadCode =
+          currentLocation?.roadCode ??
+          this.extractRoadCode(currentWorkSectionName) ??
+          null;
+
+        const activityLocationSource = currentLocation
+          ? ScheduleLocationSource.EXCEL_PARENT_ROW
+          : activityRawRoadCode
+            ? ScheduleLocationSource.EXCEL_WORK_SECTION
+            : ScheduleLocationSource.NONE;
 
         const parsedActivity: ParsedScheduleActivity = {
           rowNumber,
@@ -289,17 +360,33 @@ export class ScheduleExcelParserService {
           totalFloat,
           isMilestone,
           isCritical,
+
+          rawLocationName: currentRawLocationName,
+          rawRoadCode: activityRawRoadCode,
+          packageName: currentPackageName,
+          workSectionName: currentWorkSectionName,
+          assetReference: currentAssetReference,
+          locationSource: activityLocationSource,
         };
 
         activities.push(parsedActivity);
 
         if (isMilestone) {
-          milestones.push({
+          const parsedMilestone: ParsedMilestone = {
             activityCode,
             milestoneCode: activityCode,
             name: activityName,
             plannedDate: finishDate ?? startDate,
-          });
+
+            rawLocationName: currentRawLocationName,
+            rawRoadCode: activityRawRoadCode,
+            packageName: currentPackageName,
+            workSectionName: currentWorkSectionName,
+            assetReference: currentAssetReference,
+            locationSource: activityLocationSource,
+          };
+
+          milestones.push(parsedMilestone);
         }
       }
     });
@@ -315,6 +402,103 @@ export class ScheduleExcelParserService {
       milestones,
       errors,
     };
+  }
+
+  private async buildRoadLocationLookup() {
+    const roadLocations = await this.prisma.roadLocation.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        normalizedName: true,
+        roadCode: true,
+        aliases: true,
+      },
+    });
+
+    const lookup = new Map<string, RoadLocationLookupItem>();
+
+    for (const roadLocation of roadLocations) {
+      lookup.set(this.normalizeLocationName(roadLocation.name), roadLocation);
+      lookup.set(
+        this.normalizeLocationName(roadLocation.normalizedName),
+        roadLocation,
+      );
+
+      for (const alias of roadLocation.aliases) {
+        lookup.set(this.normalizeLocationName(alias), roadLocation);
+      }
+    }
+
+    return lookup;
+  }
+
+  private findRoadLocationByName(
+    value: string,
+    roadLocationLookup: Map<string, RoadLocationLookupItem>,
+  ): RoadLocationLookupItem | null {
+    return roadLocationLookup.get(this.normalizeLocationName(value)) ?? null;
+  }
+
+  private normalizeLocationName(value: string): string {
+    return value
+      .trim()
+      .toUpperCase()
+      .replace(/\./g, "")
+      .replace(/&/g, "AND")
+      .replace(/\s+/g, " ")
+      .replace(/\bROAD\b/g, "RD")
+      .replace(/\bSTREET\b/g, "ST");
+  }
+
+  private isPackageRow(name: string): boolean {
+    return /^PACKAGE\s+\d+/i.test(name.trim());
+  }
+
+  private isLikelyWorkSectionRow(name: string): boolean {
+    const cleaned = name.trim();
+
+    return (
+      /EXECUTION/i.test(cleaned) ||
+      /DUCT/i.test(cleaned) ||
+      /POLE/i.test(cleaned) ||
+      /CCTV/i.test(cleaned) ||
+      /NDRC/i.test(cleaned) ||
+      Boolean(this.extractAssetReference(cleaned))
+    );
+  }
+
+  private extractRoadCode(value?: string | null): string | null {
+    if (!value) return null;
+
+    const match = value.match(/\b([DE]\d{2,3})\b/i);
+
+    return match ? match[1].toUpperCase() : null;
+  }
+
+  private extractAssetReference(value?: string | null): string | null {
+    if (!value) return null;
+
+    const match = value.match(/\b([DE]\d{2,3}\/[A-Z0-9-]+)\b/i);
+
+    return match ? match[1].toUpperCase() : null;
+  }
+
+  private makeGeneratedWbsCode(
+    rowNumber: number,
+    wbsLevel: number,
+    name: string,
+  ): string {
+    const slug = name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60);
+
+    return `L${wbsLevel}-R${rowNumber}-${slug || "WBS"}`;
   }
 
   private buildHeaderMap(
@@ -364,7 +548,6 @@ export class ScheduleExcelParserService {
     latestWbsByLevel: Map<number, ParsedWbsItem>,
   ): ParsedWbsItem | null {
     const levels = Array.from(latestWbsByLevel.keys()).sort((a, b) => b - a);
-
     const deepestLevel = levels[0];
 
     if (deepestLevel === undefined) return null;
@@ -390,17 +573,6 @@ export class ScheduleExcelParserService {
   }): boolean {
     const { duration, startDate, finishDate } = params;
 
-    /**
-     * No activity-code prefix logic here.
-     *
-     * Typical imported milestone pattern:
-     * - duration is 0
-     * - has one date
-     * - finish may be blank
-     *
-     * Example:
-     * Project Start, Award of Contract.
-     */
     if (duration !== 0) {
       return false;
     }
@@ -477,7 +649,10 @@ export class ScheduleExcelParserService {
       .every((value) => String(value ?? "").trim().length === 0);
   }
 
-  private getCellValue(row: ExcelJS.Row, columnNumber: number): ExcelJS.CellValue {
+  private getCellValue(
+    row: ExcelJS.Row,
+    columnNumber: number,
+  ): ExcelJS.CellValue {
     return row.getCell(columnNumber).value;
   }
 
@@ -500,7 +675,10 @@ export class ScheduleExcelParserService {
       }
 
       if ("richText" in value && Array.isArray(value.richText)) {
-        return value.richText.map((part) => part.text).join("").trim();
+        return value.richText
+          .map((part) => part.text)
+          .join("")
+          .trim();
       }
 
       if ("hyperlink" in value && "text" in value) {
@@ -574,15 +752,6 @@ export class ScheduleExcelParserService {
       }
     }
 
-    /**
-     * Important fix:
-     *
-     * Primavera dates can be like:
-     * 28-Sep-27*
-     *
-     * The star usually indicates constraint/actual/schedule annotation.
-     * Remove it before parsing.
-     */
     const raw = String(value).replace(/\*/g, "").trim();
 
     if (!raw) return null;
@@ -674,31 +843,14 @@ export class ScheduleExcelParserService {
       return false;
     }
 
-    /**
-     * WBS codes look like:
-     * 1
-     * 1.1
-     * 3.2.3.1.1.1
-     */
     if (this.looksLikeWbsCode(cleaned)) {
       return false;
     }
 
-    /**
-     * WBS names usually have spaces.
-     * Activity codes usually do not.
-     */
     if (/\s/.test(cleaned)) {
       return false;
     }
 
-    /**
-     * Examples matched:
-     * MS-1001
-     * PRE-TNC-V-T1-P1-1085
-     * A1000
-     * ACT-001
-     */
     return /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(cleaned);
   }
 
@@ -713,11 +865,6 @@ export class ScheduleExcelParserService {
       return directName;
     }
 
-    /**
-     * Some Excel exports visually place the WBS title in shifted cells.
-     * So scan the row and pick the first meaningful text that is not a known
-     * numeric/date/code column.
-     */
     return this.findFirstMeaningfulTextInRow(row, headerMap, {
       allowActivityCodeCell: true,
     });
@@ -791,7 +938,11 @@ export class ScheduleExcelParserService {
       return "";
     }
 
-    for (let columnNumber = 1; columnNumber < row.values.length; columnNumber++) {
+    for (
+      let columnNumber = 1;
+      columnNumber < row.values.length;
+      columnNumber++
+    ) {
       if (excludedColumns.has(columnNumber)) {
         continue;
       }
@@ -823,9 +974,6 @@ export class ScheduleExcelParserService {
       return false;
     }
 
-    /**
-     * Do not use WBS codes as names.
-     */
     if (this.looksLikeWbsCode(cleaned)) {
       return false;
     }

@@ -7,6 +7,7 @@ import {
 import { RecordStatus, UserRole } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
+import { UpdateProjectDto } from "./dto/update-project.dto";
 
 @Injectable()
 export class ProjectsService {
@@ -115,6 +116,128 @@ export class ProjectsService {
         plannedProgress: dto.plannedProgress ?? 0,
         actualProgress: dto.actualProgress ?? 0,
         status: RecordStatus.ACTIVE,
+      },
+      include: {
+        projectManager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        portfolioCategory: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+      },
+    });
+  }
+
+  async update(id: string, dto: UpdateProjectDto) {
+    const existingProject = await this.prisma.project.findUnique({
+      where: {
+        id,
+      },
+      select: {
+        id: true,
+        code: true,
+      },
+    });
+
+    if (!existingProject) {
+      throw new NotFoundException("Project not found.");
+    }
+
+    if (dto.code) {
+      const normalizedCode = dto.code.trim().toUpperCase();
+
+      const duplicateProject = await this.prisma.project.findFirst({
+        where: {
+          code: normalizedCode,
+          NOT: {
+            id,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (duplicateProject) {
+        throw new ConflictException(
+          `Project code "${normalizedCode}" already exists.`,
+        );
+      }
+    }
+
+    if (dto.projectManagerId) {
+      const manager = await this.prisma.user.findUnique({
+        where: {
+          id: dto.projectManagerId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!manager) {
+        throw new BadRequestException(
+          "Selected project manager was not found.",
+        );
+      }
+    }
+
+    return this.prisma.project.update({
+      where: {
+        id,
+      },
+      data: {
+        ...(dto.code !== undefined && {
+          code: dto.code.trim().toUpperCase(),
+        }),
+
+        ...(dto.name !== undefined && {
+          name: dto.name.trim(),
+        }),
+
+        ...(dto.clientName !== undefined && {
+          clientName: dto.clientName.trim(),
+        }),
+
+        ...(dto.portfolio !== undefined && {
+          portfolio: dto.portfolio.trim().toLowerCase(),
+        }),
+
+        ...(dto.portfolioCategoryId !== undefined && {
+          portfolioCategoryId: dto.portfolioCategoryId || null,
+        }),
+
+        ...(dto.projectManagerId !== undefined && {
+          projectManagerId: dto.projectManagerId || null,
+        }),
+
+        ...(dto.completionPct !== undefined && {
+          completionPct: dto.completionPct,
+        }),
+
+        ...(dto.plannedProgress !== undefined && {
+          plannedProgress: dto.plannedProgress,
+        }),
+
+        ...(dto.actualProgress !== undefined && {
+          actualProgress: dto.actualProgress,
+        }),
+
+        ...(dto.healthStatus !== undefined && {
+          healthStatus: dto.healthStatus,
+        }),
+
+        ...(dto.status !== undefined && {
+          status: dto.status,
+        }),
       },
       include: {
         projectManager: {

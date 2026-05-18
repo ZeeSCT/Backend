@@ -4,15 +4,15 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import {
+  ActivityAssignmentStatus,
   Prisma,
   RecordStatus,
+  ResourceAvailabilityStatus,
   ResourceType,
   ScheduleUploadStatus,
 } from "@prisma/client";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { AssignResourceDto } from "./dto/assign-resource.dto";
-
-type AssignmentStatus = "unassigned" | "partially-assigned" | "assigned";
 
 export interface WbsTreeNode {
   id: string;
@@ -27,6 +27,29 @@ export interface WbsTreeNode {
 @Injectable()
 export class ResourceAssignmentService {
   constructor(private readonly prisma: PrismaService) {}
+
+  getMetadata() {
+    return {
+      resourceTypes: Object.values(ResourceType).map((value) => ({
+        value,
+        label: this.toTitleCase(value.replaceAll("_", " ")),
+      })),
+
+      assignmentStatuses: Object.values(ActivityAssignmentStatus).map(
+        (value) => ({
+          value,
+          label: this.toTitleCase(value.replaceAll("_", " ")),
+        }),
+      ),
+
+      availabilityStatuses: Object.values(ResourceAvailabilityStatus).map(
+        (value) => ({
+          value,
+          label: this.toTitleCase(value.replaceAll("_", " ")),
+        }),
+      ),
+    };
+  }
 
   async getProjects() {
     return this.prisma.project.findMany({
@@ -139,6 +162,7 @@ export class ResourceAssignmentService {
     includeMilestones?: boolean;
   }) {
     const { wbsItemId, status, search, includeMilestones = true } = params;
+    const normalizedStatus = this.normalizeAssignmentStatus(status);
 
     await this.ensureWbsItemExists(wbsItemId);
 
@@ -180,7 +204,19 @@ export class ResourceAssignmentService {
         milestone: true,
         resourceAssignments: {
           include: {
-            resource: true,
+            resource: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                discipline: true,
+                designation: true,
+                employeeCode: true,
+                email: true,
+                phone: true,
+                isActive: true,
+              },
+            },
           },
         },
         wbsItem: {
@@ -199,7 +235,6 @@ export class ResourceAssignmentService {
       );
 
       const assignmentStatus = this.getAssignmentStatus(allocationPercent);
-
       const firstAssignedResource = activity.resourceAssignments[0]?.resource;
 
       const plannedStart =
@@ -219,39 +254,48 @@ export class ResourceAssignmentService {
         description: activity.wbsItem
           ? `WBS ${activity.wbsItem.wbsCode} — ${activity.wbsItem.name}`
           : "",
+
         status: assignmentStatus,
+        statusLabel: this.toTitleCase(assignmentStatus.replaceAll("_", " ")),
+
         isCritical: activity.isCritical,
         isMilestone: activity.isMilestone,
         durationDays: activity.duration ?? 0,
+
         allocationPercent,
+        assignedResourceCount: activity.resourceAssignments.length,
+
         requiredRole:
           firstAssignedResource?.designation ||
           firstAssignedResource?.discipline ||
           "Site Engineer",
+
         plannedStart: this.toDateInputValue(plannedStart),
         plannedFinish: this.toDateInputValue(plannedFinish),
         plannedHours: Math.max((activity.duration ?? 0) * 8, 0),
+
         rawStatus: activity.status,
         totalFloat: activity.totalFloat,
       };
     });
 
-    if (!status || status === "all") {
+    if (!normalizedStatus) {
       return mapped;
     }
 
-    return mapped.filter((activity) => activity.status === status);
+    return mapped.filter((activity) => activity.status === normalizedStatus);
   }
 
   async getAvailableResources(params: {
     type?: string;
     role?: string;
+    search?: string;
     start?: string;
     finish?: string;
   }) {
     const resourceType = this.normalizeResourceType(params.type);
-
     const role = params.role?.trim();
+    const search = params.search?.trim();
 
     const plannedStart = params.start ? new Date(params.start) : null;
     const plannedFinish = params.finish ? new Date(params.finish) : null;
@@ -263,6 +307,24 @@ export class ResourceAssignmentService {
     if (plannedFinish && Number.isNaN(plannedFinish.getTime())) {
       throw new BadRequestException("Invalid finish date.");
     }
+
+    if (plannedStart && plannedFinish && plannedStart > plannedFinish) {
+      throw new BadRequestException(
+        "Start date cannot be after finish date.",
+      );
+    }
+
+    const assignmentDateFilter =
+      plannedStart && plannedFinish
+        ? {
+            plannedStart: {
+              lte: plannedFinish,
+            },
+            plannedFinish: {
+              gte: plannedStart,
+            },
+          }
+        : undefined;
 
     const resources = await this.prisma.resource.findMany({
       where: {
@@ -298,24 +360,74 @@ export class ResourceAssignmentService {
               ],
             }
           : {}),
+
+        ...(search
+          ? {
+              OR: [
+                {
+                  name: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  employeeCode: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  designation: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  discipline: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  email: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  phone: {
+                    contains: search,
+                    mode: "insensitive",
+                  },
+                },
+              ],
+            }
+          : {}),
       },
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
       include: {
-        activityAssignments: {
-          where:
-            plannedStart && plannedFinish
-              ? {
-                  plannedStart: {
-                    lte: plannedFinish,
-                  },
-                  plannedFinish: {
-                    gte: plannedStart,
-                  },
-                }
-              : undefined,
-        },
+        activityAssignments: assignmentDateFilter
+          ? {
+              where: assignmentDateFilter,
+              select: {
+                id: true,
+                activityId: true,
+                projectId: true,
+                allocation: true,
+                plannedStart: true,
+                plannedFinish: true,
+              },
+            }
+          : {
+              select: {
+                id: true,
+                activityId: true,
+                projectId: true,
+                allocation: true,
+                plannedStart: true,
+                plannedFinish: true,
+              },
+            },
       },
     });
 
@@ -324,18 +436,75 @@ export class ResourceAssignmentService {
         resource.activityAssignments,
       );
 
+      const availabilityStatus =
+        this.getAvailabilityStatus(allocationPercent);
+
       return {
         id: resource.id,
         name: resource.name,
         initials: this.getInitials(resource.name),
-        type: resource.type.toLowerCase(),
+
+        type: resource.type,
+        typeLabel: this.toTitleCase(resource.type.replaceAll("_", " ")),
+
         role: resource.designation || resource.discipline || resource.type,
+        designation: resource.designation,
+        discipline: resource.discipline,
+        employeeCode: resource.employeeCode,
+
         allocationPercent,
-        availabilityStatus: this.getAvailabilityStatus(allocationPercent),
+
+        availabilityStatus,
+        availabilityStatusLabel: this.toTitleCase(
+          availabilityStatus.replaceAll("_", " "),
+        ),
+
         email: resource.email,
         phone: resource.phone,
+        isActive: resource.isActive,
       };
     });
+  }
+
+  async getActivityAssignments(activityId: string) {
+    await this.ensureScheduleActivityExists(activityId);
+
+    const assignments = await this.prisma.activityResourceAssignment.findMany({
+      where: {
+        activityId,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      include: {
+        resource: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            discipline: true,
+            designation: true,
+            employeeCode: true,
+            email: true,
+            phone: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    const mappedAssignments = assignments.map((assignment) =>
+      this.mapAssignmentResponse(assignment),
+    );
+
+    return {
+      items: mappedAssignments,
+      total: mappedAssignments.length,
+      allocationPercent: mappedAssignments.reduce(
+        (total, assignment) => total + assignment.allocationPercent,
+        0,
+      ),
+    };
   }
 
   async assignResource(activityId: string, dto: AssignResourceDto) {
@@ -346,6 +515,7 @@ export class ResourceAssignmentService {
       select: {
         id: true,
         projectId: true,
+        roadLocationId: true,
         activityCode: true,
         activityName: true,
       },
@@ -403,6 +573,18 @@ export class ResourceAssignmentService {
         },
       });
 
+    const currentActivityAllocation =
+      await this.getCurrentActivityAllocation(
+        activityId,
+        existingSameAssignment?.id,
+      );
+
+    if (currentActivityAllocation + dto.allocationPercent > 100) {
+      throw new BadRequestException(
+        `Activity allocation cannot exceed 100%. Current activity allocation is ${currentActivityAllocation}%.`,
+      );
+    }
+
     const overlappingAssignments =
       await this.prisma.activityResourceAssignment.findMany({
         where: {
@@ -426,12 +608,15 @@ export class ResourceAssignmentService {
         },
       });
 
-    const existingAllocation = this.sumAllocation(overlappingAssignments);
-    const nextAllocation = existingAllocation + dto.allocationPercent;
+    const existingResourceAllocation =
+      this.sumAllocation(overlappingAssignments);
 
-    if (nextAllocation > 100) {
+    const nextResourceAllocation =
+      existingResourceAllocation + dto.allocationPercent;
+
+    if (nextResourceAllocation > 100) {
       throw new BadRequestException(
-        `Resource allocation exceeds 100% for the selected date range. Current overlapping allocation is ${existingAllocation}%.`,
+        `Resource allocation exceeds 100% for the selected date range. Current overlapping allocation is ${existingResourceAllocation}%.`,
       );
     }
 
@@ -446,6 +631,9 @@ export class ResourceAssignmentService {
         projectId: activity.projectId,
         activityId,
         resourceId: dto.resourceId,
+
+        roadLocationId: activity.roadLocationId ?? null,
+
         allocation: dto.allocationPercent,
         plannedHours: dto.plannedHours ?? null,
         plannedStart,
@@ -453,6 +641,8 @@ export class ResourceAssignmentService {
         remarks: dto.remarks ?? null,
       },
       update: {
+        roadLocationId: activity.roadLocationId ?? null,
+
         allocation: dto.allocationPercent,
         plannedHours: dto.plannedHours ?? null,
         plannedStart,
@@ -467,14 +657,55 @@ export class ResourceAssignmentService {
             activityName: true,
           },
         },
-        resource: true,
+        resource: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            discipline: true,
+            designation: true,
+            employeeCode: true,
+            email: true,
+            phone: true,
+            isActive: true,
+          },
+        },
       },
     });
 
     return {
       success: true,
       message: "Resource assigned successfully.",
-      assignment,
+      assignment: this.mapAssignmentResponse(assignment),
+    };
+  }
+
+  async removeAssignment(assignmentId: string) {
+    const assignment =
+      await this.prisma.activityResourceAssignment.findUnique({
+        where: {
+          id: assignmentId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    if (!assignment) {
+      throw new NotFoundException(`Assignment "${assignmentId}" not found.`);
+    }
+
+    await this.prisma.activityResourceAssignment.delete({
+      where: {
+        id: assignmentId,
+      },
+    });
+
+    return {
+      success: true,
+      deleted: true,
+      assignmentId,
+      message: "Resource assignment removed successfully.",
     };
   }
 
@@ -529,6 +760,25 @@ export class ResourceAssignmentService {
     return wbsItem;
   }
 
+  private async ensureScheduleActivityExists(activityId: string) {
+    const activity = await this.prisma.scheduleActivity.findUnique({
+      where: {
+        id: activityId,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        roadLocationId: true,
+      },
+    });
+
+    if (!activity) {
+      throw new NotFoundException(`Activity "${activityId}" not found.`);
+    }
+
+    return activity;
+  }
+
   private async buildWbsTreeForUpload(
     uploadId: string,
     options?: {
@@ -566,13 +816,6 @@ export class ResourceAssignmentService {
           wbsItemId: {
             not: null,
           },
-
-          /**
-           * Important:
-           * Do not exclude milestones by default.
-           * The resource assignment screen should count all child schedule rows
-           * unless explicitly told not to.
-           */
           ...(includeMilestones
             ? {}
             : {
@@ -625,13 +868,6 @@ export class ResourceAssignmentService {
       }
     }
 
-    /**
-     * Roll up child activity counts into parent WBS nodes.
-     *
-     * Example:
-     * 2 GENERAL = all activities under 2, 2.5, 2.5.1, etc.
-     * 2.5 CONTRACT = direct activities under 2.5 + descendants.
-     */
     const rollUpCounts = (node: WbsTreeNode): number => {
       const childActivityCount = node.children.reduce(
         (total, child) => total + rollUpCounts(child),
@@ -652,6 +888,29 @@ export class ResourceAssignmentService {
     };
   }
 
+  private async getCurrentActivityAllocation(
+    activityId: string,
+    excludeAssignmentId?: string,
+  ) {
+    const result = await this.prisma.activityResourceAssignment.aggregate({
+      where: {
+        activityId,
+        ...(excludeAssignmentId
+          ? {
+              id: {
+                not: excludeAssignmentId,
+              },
+            }
+          : {}),
+      },
+      _sum: {
+        allocation: true,
+      },
+    });
+
+    return Math.round(result._sum.allocation ?? 0);
+  }
+
   private sumAllocation(assignments: Array<{ allocation: number | null }>) {
     return Math.round(
       assignments.reduce(
@@ -661,16 +920,70 @@ export class ResourceAssignmentService {
     );
   }
 
-  private getAssignmentStatus(allocationPercent: number): AssignmentStatus {
-    if (allocationPercent >= 100) return "assigned";
-    if (allocationPercent > 0) return "partially-assigned";
-    return "unassigned";
+  private getAssignmentStatus(
+    allocationPercent: number,
+  ): ActivityAssignmentStatus {
+    if (allocationPercent >= 100) {
+      return ActivityAssignmentStatus.ASSIGNED;
+    }
+
+    if (allocationPercent > 0) {
+      return ActivityAssignmentStatus.PARTIALLY_ASSIGNED;
+    }
+
+    return ActivityAssignmentStatus.UNASSIGNED;
   }
 
-  private getAvailabilityStatus(allocationPercent: number) {
-    if (allocationPercent >= 100) return "over-allocated";
-    if (allocationPercent >= 80) return "high-load";
-    return "available";
+  private getAvailabilityStatus(
+    allocationPercent: number,
+  ): ResourceAvailabilityStatus {
+    if (allocationPercent >= 100) {
+      return ResourceAvailabilityStatus.OVER_ALLOCATED;
+    }
+
+    if (allocationPercent >= 80) {
+      return ResourceAvailabilityStatus.HIGH_LOAD;
+    }
+
+    return ResourceAvailabilityStatus.AVAILABLE;
+  }
+
+  private normalizeResourceType(type?: string): ResourceType | undefined {
+    if (!type?.trim() || type === "all") return undefined;
+
+    const normalized = type
+      .trim()
+      .toUpperCase()
+      .replaceAll("-", "_")
+      .replaceAll(" ", "_");
+
+    const allowedTypes = Object.values(ResourceType) as string[];
+
+    if (!allowedTypes.includes(normalized)) {
+      throw new BadRequestException(`Invalid resource type "${type}".`);
+    }
+
+    return normalized as ResourceType;
+  }
+
+  private normalizeAssignmentStatus(
+    status?: string,
+  ): ActivityAssignmentStatus | undefined {
+    if (!status?.trim() || status === "all") return undefined;
+
+    const normalized = status
+      .trim()
+      .toUpperCase()
+      .replaceAll("-", "_")
+      .replaceAll(" ", "_");
+
+    const allowedStatuses = Object.values(ActivityAssignmentStatus) as string[];
+
+    if (!allowedStatuses.includes(normalized)) {
+      throw new BadRequestException(`Invalid assignment status "${status}".`);
+    }
+
+    return normalized as ActivityAssignmentStatus;
   }
 
   private toDateInputValue(value: Date | null) {
@@ -688,17 +1001,35 @@ export class ResourceAssignmentService {
       .join("");
   }
 
-  private normalizeResourceType(type?: string): ResourceType | undefined {
-    if (!type?.trim()) return undefined;
+  private toTitleCase(value: string) {
+    return value
+      .toLowerCase()
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
 
-    const normalized = type.trim().toUpperCase();
+  private mapAssignmentResponse(assignment: any) {
+    return {
+      id: assignment.id,
 
-    if (normalized === "PERSON") return ResourceType.PERSON;
-    if (normalized === "TEAM") return ResourceType.TEAM;
-    if (normalized === "EQUIPMENT") return ResourceType.EQUIPMENT;
-    if (normalized === "MATERIAL") return ResourceType.MATERIAL;
-    if (normalized === "VENDOR") return ResourceType.VENDOR;
+      projectId: assignment.projectId,
+      activityId: assignment.activityId,
+      resourceId: assignment.resourceId,
+      roadLocationId: assignment.roadLocationId,
 
-    throw new BadRequestException(`Invalid resource type "${type}".`);
+      allocationPercent: assignment.allocation ?? 0,
+      plannedHours: assignment.plannedHours,
+      actualHours: assignment.actualHours,
+      plannedStart: this.toDateInputValue(assignment.plannedStart),
+      plannedFinish: this.toDateInputValue(assignment.plannedFinish),
+      remarks: assignment.remarks,
+
+      resource: assignment.resource,
+
+      createdAt: assignment.createdAt,
+      updatedAt: assignment.updatedAt,
+    };
   }
 }
