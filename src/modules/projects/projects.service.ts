@@ -1,30 +1,81 @@
-import { Injectable } from '@nestjs/common';
-import { HealthStatus } from '@prisma/client';
-import { PrismaService } from '@/common/prisma/prisma.service';
-import { screenResponse } from '@/common/dashboard/dashboard-response';
+import { Injectable } from "@nestjs/common";
+import { RecordStatus } from "@prisma/client";
+import { PrismaService } from "@/common/prisma/prisma.service";
+
 @Injectable()
 export class ProjectsService {
-  constructor(private prisma: PrismaService) {}
-  findAll(){return this.prisma.project.findMany({include:{projectManager:{select:{id:true,name:true,email:true,role:true}},_count:{select:{activities:true,milestones:true,resources:true,inspections:true,ncrs:true,materialRequests:true,purchaseOrders:true,assets:true}}},orderBy:{createdAt:'desc'}})}
-  findOne(id:string){return this.prisma.project.findUnique({where:{id},include:{activities:true,milestones:true,resources:true,inspections:true,ncrs:true,materialRequests:true,purchaseOrders:true,assets:true, projectManager:{select:{name:true,email:true}}}})}
-  private async firstProjectId(projectId?: string){ return projectId || (await this.prisma.project.findFirst({ select:{ id:true }, orderBy:{ createdAt:'desc' } }))?.id; }
-  async projectWorkspace(projectId?: string){ const id=await this.firstProjectId(projectId); const project=id?await this.findOne(id):null; return screenResponse('project-workspace','Project workspace',{ project }); }
-  async milestoneTracker(){ const rows=await this.prisma.planningMilestone.findMany({include:{project:{select:{code:true,name:true}}},orderBy:{baselineDate:'asc'}}); return screenResponse('milestone-tracker','Milestone tracker',{kpis:{total:rows.length, delayed:rows.filter(r=>r.delayDays>0).length, critical:rows.filter(r=>r.healthStatus==='CRITICAL').length},table:rows}); }
-  async workPackageTracker(){ const rows=await this.prisma.planningActivity.findMany({include:{project:{select:{code:true,name:true}}},orderBy:[{wbsCode:'asc'},{plannedStart:'asc'}]}); return screenResponse('work-package-tracker','Work package tracker',{kpis:{packages:new Set(rows.map(r=>r.wbsCode)).size, activities:rows.length, critical:rows.filter(r=>r.isCritical).length},table:rows}); }
-  async siteProgressView(){ const rows=await this.findAll(); return screenResponse('site-progress-view','Site progress view',{kpis:{projects:rows.length, plannedAvg:avg(rows.map((r:any)=>r.plannedProgress)), actualAvg:avg(rows.map((r:any)=>r.actualProgress))},table:rows.map((p:any)=>({id:p.id,code:p.code,name:p.name,plannedProgress:p.plannedProgress,actualProgress:p.actualProgress,variance:p.actualProgress-p.plannedProgress,healthStatus:p.healthStatus}))}); }
-  async taskAssignmentBoard(){ const rows=await this.prisma.planningActivity.findMany({include:{project:{select:{code:true,name:true}}},orderBy:{updatedAt:'desc'},take:100}); return screenResponse('task-assignment-board','Task & assignment board',{kpis:{tasks:rows.length, open:rows.filter(r=>!r.actualFinish).length, delayed:rows.filter(r=>['DELAYED','CRITICAL'].includes(r.healthStatus)).length},table:rows}); }
-  async riskIssueBlocker(){ const [activities,ncrs,resources]=await Promise.all([this.prisma.planningActivity.findMany({where:{healthStatus:{in:[HealthStatus.AT_RISK,HealthStatus.DELAYED,HealthStatus.CRITICAL]}},include:{project:{select:{code:true,name:true}}}}),this.prisma.ncr.findMany({include:{project:{select:{code:true,name:true}}}}),this.prisma.planningResource.findMany({where:{healthStatus:{in:[HealthStatus.AT_RISK,HealthStatus.DELAYED,HealthStatus.CRITICAL]}},include:{project:{select:{code:true,name:true}}}})]); return screenResponse('risk-issue-blocker','Risk / issue / blocker',{kpis:{issues:activities.length,ncrs:ncrs.length,resourceShortages:resources.length},activities,ncrs,resources}); }
-  async documentReadiness(){ const docs=await this.prisma.planningDocument.findMany({orderBy:{uploadedAt:'desc'}}); const projects=await this.findAll(); return screenResponse('document-readiness','Document readiness',{kpis:{documents:docs.length, projects:projects.length, missing:Math.max(projects.length-docs.length,0)},documents:docs,projects}); }
-  async approvalFollowUp(){ const milestones=await this.prisma.planningMilestone.findMany({where:{healthStatus:{in:[HealthStatus.AT_RISK,HealthStatus.DELAYED,HealthStatus.CRITICAL]}},include:{project:{select:{code:true,name:true}}}}); return screenResponse('approval-follow-up','Approval follow-up',{kpis:{pending:milestones.length, delayed:milestones.filter(m=>m.delayDays>0).length},table:milestones}); }
-  async inspectionFollowUp(){ const inspections=await this.prisma.inspection.findMany({include:{project:{select:{code:true,name:true}}},orderBy:{scheduledAt:'asc'}}); return screenResponse('inspection-follow-up','Inspection follow-up',{kpis:{inspections:inspections.length, pending:inspections.filter(i=>!i.outcome || i.outcome==='Scheduled').length},table:inspections}); }
-  async materialResource(){ const [mrs,pos,resources]=await Promise.all([this.prisma.materialRequest.findMany({include:{project:{select:{code:true,name:true}}}}),this.prisma.purchaseOrder.findMany({include:{project:{select:{code:true,name:true}}}}),this.prisma.planningResource.findMany({include:{project:{select:{code:true,name:true}}}})]); return screenResponse('material-resource','Material & resource',{kpis:{materialRequests:mrs.length,purchaseOrders:pos.length,resourceRows:resources.length,shortages:resources.filter(r=>r.availableQty<r.plannedQty).length},materialRequests:mrs,purchaseOrders:pos,resources}); }
-  async commercialProgress(){ const projects=await this.findAll(); return screenResponse('commercial-progress','Commercial progress',{kpis:{contractValue:projects.reduce((s:any,p:any)=>s+Number(p.contractValue??0),0), earnedValue:projects.reduce((s:any,p:any)=>s+(Number(p.contractValue??0)*p.completionPct/100),0)},table:projects.map((p:any)=>({...p,earnedValue:Number(p.contractValue??0)*p.completionPct/100}))}); }
-  async planningOverview(){ const rows=await this.findAll(); return screenResponse('planning-overview','Planning overview',{kpis:{projects:rows.length, avgPlanned:avg(rows.map((r:any)=>r.plannedProgress)), avgActual:avg(rows.map((r:any)=>r.actualProgress))},table:rows}); }
-  async wbsTimeline(){ const rows=await this.prisma.planningActivity.findMany({include:{project:{select:{code:true,name:true}}},orderBy:[{plannedStart:'asc'}]}); return screenResponse('wbs-timeline','WBS timeline',{kpis:{activities:rows.length,wbs:new Set(rows.map(r=>r.wbsCode)).size},timeline:rows}); }
-  async milestoneRegister(){ const rows=await this.prisma.planningMilestone.findMany({include:{project:{select:{code:true,name:true}}},orderBy:{baselineDate:'asc'}}); return screenResponse('milestone-register','Milestone register',{kpis:{milestones:rows.length,delayed:rows.filter(r=>r.delayDays>0).length},table:rows}); }
-  async activityRegister(){ const rows=await this.prisma.planningActivity.findMany({include:{project:{select:{code:true,name:true}}},orderBy:[{activityId:'asc'}],take:500}); return screenResponse('activity-register','Activity register',{kpis:{activities:rows.length,complete:rows.filter(r=>r.percentComplete===100).length,critical:rows.filter(r=>r.isCritical).length},table:rows}); }
-  async criticalFloatView(){ const rows=await this.prisma.planningActivity.findMany({where:{OR:[{isCritical:true},{floatDays:{lte:0}}]},include:{project:{select:{code:true,name:true}}},orderBy:[{floatDays:'asc'},{plannedStart:'asc'}]}); return screenResponse('critical-float-view','Critical / float view',{kpis:{critical:rows.filter(r=>r.isCritical).length,negativeFloat:rows.filter(r=>(r.floatDays??0)<0).length},table:rows}); }
-  async resourcePlan(){ const rows=await this.prisma.planningResource.findMany({include:{project:{select:{code:true,name:true}}},orderBy:{requiredDate:'asc'}}); return screenResponse('resource-plan','Resource plan',{kpis:{resources:rows.length,shortages:rows.filter(r=>r.availableQty<r.plannedQty).length,plannedQty:rows.reduce((s,r)=>s+r.plannedQty,0),availableQty:rows.reduce((s,r)=>s+r.availableQty,0)},table:rows}); }
-  async monthlyLookahead(){ const rows=await this.prisma.planningActivity.findMany({where:{actualFinish:null},include:{project:{select:{code:true,name:true}}},orderBy:{plannedStart:'asc'},take:100}); return screenResponse('monthly-lookahead','Monthly lookahead',{kpis:{upcoming:rows.length,critical:rows.filter(r=>r.isCritical).length},table:rows}); }
+  constructor(private readonly prisma: PrismaService) {}
+
+  findAll() {
+    return this.prisma.project.findMany({
+      where: {
+        status: RecordStatus.ACTIVE,
+      },
+      include: {
+        portfolioCategory: true,
+        projectManager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        _count: {
+          select: {
+            activities: true,
+            milestones: true,
+            resources: true,
+            inspections: true,
+            ncrs: true,
+            materialRequests: true,
+            purchaseOrders: true,
+            assets: true,
+            scheduleUploads: true,
+            wbsItems: true,
+            scheduleActivities: true,
+            scheduleMilestones: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  }
+
+  findOne(id: string) {
+    return this.prisma.project.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        portfolioCategory: true,
+        projectManager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        activities: true,
+        milestones: true,
+        resources: true,
+        inspections: true,
+        ncrs: true,
+        materialRequests: true,
+        purchaseOrders: true,
+        assets: true,
+        scheduleUploads: {
+          orderBy: {
+            revisionNo: "desc",
+          },
+        },
+        wbsItems: true,
+        scheduleActivities: true,
+        scheduleMilestones: true,
+      },
+    });
+  }
 }
-function avg(values:number[]){ return values.length ? Math.round(values.reduce((a,b)=>a+b,0)/values.length) : 0; }
