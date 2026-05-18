@@ -13,7 +13,8 @@
     "incremental": true,
     "strict": false,
     "skipLibCheck": true,
-    "paths": { "@/*": ["src/*"] }
+    "paths": { "@/*": ["src/*"] 
+  }
   },
   "exclude": ["node_modules", "dist"]
 }

@@ -439,6 +439,8 @@ async function seedDocumentWorkflowStatuses() {
 
   type CategoryCode = keyof typeof categoryMap;
 
+
+
   /* ---------------------------------- */
   /* TYPES */
   /* ---------------------------------- */
@@ -3196,7 +3198,7 @@ await prisma.systemSetting.upsert({
   await seedResources();
 
   console.log("Seed completed successfully.");
-}
+}}
 
 main()
   .catch((error) => {

@@ -67,6 +67,27 @@ enum TenderStage {
   NO_BID
 }
 
+enum MaterialAvailabilityStatus {
+  NOT_ASSESSED
+  AVAILABLE
+  PARTIAL
+  SHORTAGE
+}
+
+enum MaterialDeliveryStatus {
+  NOT_PLANNED
+  DELIVERED
+  PENDING
+  DELAYED
+}
+
+enum LabourReadinessStatus {
+  NOT_ASSESSED
+  FULL_CREW
+  SHORT
+}
+
+
 enum ScheduleUploadStatus {
   PROCESSING
   VALIDATED
@@ -85,15 +106,16 @@ enum ActivityStatus {
 }
 
 enum ResourceType {
+  RESOURCE
   PERSON
-  FIELD_ENGINEER
+  TEAM
   SITE_ENGINEER
+  FIELD_ENGINEER
   SUPERVISOR
-  TECHNICIAN
   CREW
+  TECHNICIAN
   EQUIPMENT
   MATERIAL
-  TEAM
   VENDOR
   SUBCONTRACTOR
 }
@@ -490,6 +512,7 @@ model ScheduleActivity {
 
   resourceAssignments ActivityResourceAssignment[]
   statusUpdates       ActivityStatusUpdate[]
+  taskProgressUpdates TaskProgressUpdate[]
 
   projectResourceAssignments ProjectResourceAssignment[]
 
@@ -581,12 +604,13 @@ model ScheduleImportError {
 model Resource {
   id String @id @default(cuid())
 
+  employeeCode String? @unique
+
   name String
-  type ResourceType @default(PERSON)
+  type ResourceType @default(RESOURCE)
 
   discipline   String?
   designation  String?
-  employeeCode String? @unique
 
   email String?
   phone String?
@@ -677,11 +701,12 @@ model ActivityResourceAssignment {
   plannedStart  DateTime?
   plannedFinish DateTime?
   remarks       String?
+  labourStatus LabourReadinessStatus @default(NOT_ASSESSED)
 
   project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   activity ScheduleActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   resource Resource         @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -692,6 +717,7 @@ model ActivityResourceAssignment {
   @@index([roadLocationId])
   @@index([plannedStart])
   @@index([plannedFinish])
+  @@index([labourStatus])
 }
 
 model ActivityStatusUpdate {
@@ -702,6 +728,8 @@ model ActivityStatusUpdate {
   status             ActivityStatus
   progressPercentage Float?
   remarks            String?
+  progressColorClass String?
+  statusBadgeClass   String?
 
   uploadedFileUrl  String?
   uploadedFileName String?
@@ -717,6 +745,32 @@ model ActivityStatusUpdate {
   @@index([scheduleActivityId])
   @@index([status])
   @@index([updatedAt])
+}
+
+/**
+ * /**
+ * Task Progress
+ */
+
+model TaskProgressUpdate {
+  id String @id @default(cuid())
+
+  scheduleActivityId String
+
+  progressPercentage Float          @default(0)
+  status             ActivityStatus
+  remarks            String?
+
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scheduleActivity ScheduleActivity @relation(fields: [scheduleActivityId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleActivityId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 /**
@@ -827,6 +881,7 @@ model ProjectBilling {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
 }
 
 /**
@@ -1201,9 +1256,12 @@ model PlanningResource {
   requiredDate DateTime?
 
   healthStatus HealthStatus @default(ON_TRACK)
+  materialStatus MaterialAvailabilityStatus @default(NOT_ASSESSED)
+  deliveryStatus MaterialDeliveryStatus @default(NOT_PLANNED)
+  labourStatus   LabourReadinessStatus @default(NOT_ASSESSED)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
   project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
@@ -1212,6 +1270,9 @@ model PlanningResource {
   @@index([documentId])
   @@index([activityId])
   @@index([healthStatus])
+  @@index([materialStatus])
+  @@index([deliveryStatus]) 
+   @@index([labourStatus])
 }
 
 /**
