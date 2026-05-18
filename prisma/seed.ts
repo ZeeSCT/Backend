@@ -8,7 +8,10 @@ import {
   RecordStatus,
   UserRole,
   ResourceType,
+  ResourceAssignmentScope,
+  ScheduleLocationSource,
   ActivityStatus,
+  DocumentImportSource,
 } from "@prisma/client";
 
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -32,100 +35,328 @@ function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * DAY_MS);
 }
 
+function normalizeLocationName(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/\./g, "")
+    .replace(/&/g, "AND")
+    .replace(/\s+/g, " ")
+    .replace(/\bROAD\b/g, "RD")
+    .replace(/\bSTREET\b/g, "ST");
+}
 
+function getLookupKeys(name: string, aliases: string[] = []) {
+  return [name, ...aliases].map((value) => normalizeLocationName(value));
+}
 
+/**
+ * IMPORTANT:
+ * This must run before any PlanningDocument create/update.
+ * PlanningDocument.workflowStatusCode defaults to "draft",
+ * so "draft" must already exist in DocumentWorkflowStatusLookup.
+ */
+async function seedDocumentWorkflowStatuses() {
+  const documentWorkflowStatuses = [
+    { code: "draft", label: "Draft", tone: "blue", displayOrder: 1 },
+    { code: "submitted", label: "Submitted", tone: "blue", displayOrder: 2 },
+    {
+      code: "under-review",
+      label: "Under Review",
+      tone: "amber",
+      displayOrder: 3,
+    },
+    { code: "pending", label: "Pending", tone: "amber", displayOrder: 4 },
+    { code: "approved", label: "Approved", tone: "green", displayOrder: 5 },
+    { code: "rejected", label: "Rejected", tone: "red", displayOrder: 6 },
+  ];
 
-async function main() {
-  console.log("Starting seed...");
+  for (const item of documentWorkflowStatuses) {
+    await prisma.documentWorkflowStatusLookup.upsert({
+      where: { code: item.code },
+      update: {
+        label: item.label,
+        tone: item.tone,
+        displayOrder: item.displayOrder,
+        isActive: true,
+      },
+      create: {
+        code: item.code,
+        label: item.label,
+        tone: item.tone,
+        displayOrder: item.displayOrder,
+        isActive: true,
+      },
+    });
+  }
 
-  /* ---------------------------------- */
-  /* USERS */
-  /* ---------------------------------- */
+  console.log("Document workflow statuses seeded.");
+}
 
-  const passwordHash = await bcrypt.hash(
-    process.env.SEED_ADMIN_PASSWORD || "Admin@123",
-    10,
-  );
+  async function seedResources() {
+    console.log("Seeding resources...");
 
-  const admin = await prisma.user.upsert({
-    where: { email: "admin@example.com" },
-    update: {
-      name: "Admin User",
-      role: UserRole.SUPER_ADMIN,
-      isActive: true,
-    },
-    create: {
-      name: "Admin User",
-      email: "admin@example.com",
-      passwordHash,
-      role: UserRole.SUPER_ADMIN,
-      isActive: true,
-    },
-  });
+    const resources = [
+      {
+        employeeCode: "RES-SE-001",
+        name: "Ahmed Khan",
+        type: ResourceType.SITE_ENGINEER,
+        designation: "Site Engineer",
+        discipline: "ITS",
+        email: "ahmed.khan@scientechnic.local",
+        phone: "+971500000001",
+      },
+      {
+        employeeCode: "RES-SE-002",
+        name: "Ravi Menon",
+        type: ResourceType.SITE_ENGINEER,
+        designation: "Site Engineer",
+        discipline: "Traffic Systems",
+        email: "ravi.menon@scientechnic.local",
+        phone: "+971500000002",
+      },
+      {
+        employeeCode: "RES-FE-001",
+        name: "Mohammed Ali",
+        type: ResourceType.FIELD_ENGINEER,
+        designation: "Field Engineer",
+        discipline: "Site Execution",
+        email: "mohammed.ali@scientechnic.local",
+        phone: "+971500000003",
+      },
+      {
+        employeeCode: "RES-SUP-001",
+        name: "Suresh Kumar",
+        type: ResourceType.SUPERVISOR,
+        designation: "Supervisor",
+        discipline: "Civil Works",
+        email: "suresh.kumar@scientechnic.local",
+        phone: "+971500000004",
+      },
+      {
+        employeeCode: "RES-SUP-002",
+        name: "Imran Shaikh",
+        type: ResourceType.SUPERVISOR,
+        designation: "Supervisor",
+        discipline: "ITS Installation",
+        email: "imran.shaikh@scientechnic.local",
+        phone: "+971500000005",
+      },
+      {
+        employeeCode: "RES-TECH-001",
+        name: "Arun Joseph",
+        type: ResourceType.TECHNICIAN,
+        designation: "Technician",
+        discipline: "ITS Installation",
+        email: "arun.joseph@scientechnic.local",
+        phone: "+971500000006",
+      },
+      {
+        employeeCode: "RES-TECH-002",
+        name: "Bilal Hassan",
+        type: ResourceType.TECHNICIAN,
+        designation: "Technician",
+        discipline: "Traffic Signal",
+        email: "bilal.hassan@scientechnic.local",
+        phone: "+971500000007",
+      },
+      {
+        employeeCode: "RES-TECH-003",
+        name: "Naveen Raj",
+        type: ResourceType.TECHNICIAN,
+        designation: "Technician",
+        discipline: "ELV",
+        email: "naveen.raj@scientechnic.local",
+        phone: "+971500000008",
+      },
+      {
+        employeeCode: "RES-CREW-001",
+        name: "Civil Installation Crew A",
+        type: ResourceType.CREW,
+        designation: "Civil Crew",
+        discipline: "Civil Works",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-CREW-002",
+        name: "ITS Installation Crew A",
+        type: ResourceType.CREW,
+        designation: "ITS Crew",
+        discipline: "ITS Installation",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-EQ-001",
+        name: "Boom Lift",
+        type: ResourceType.EQUIPMENT,
+        designation: "Equipment",
+        discipline: "Access Equipment",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-EQ-002",
+        name: "Cable Pulling Machine",
+        type: ResourceType.EQUIPMENT,
+        designation: "Equipment",
+        discipline: "Installation Equipment",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-MAT-001",
+        name: "Fiber Optic Cable",
+        type: ResourceType.MATERIAL,
+        designation: "Material",
+        discipline: "Fiber Network",
+        email: null,
+        phone: null,
+      },
+      {
+        employeeCode: "RES-VEN-001",
+        name: "Traffic Signal Vendor",
+        type: ResourceType.VENDOR,
+        designation: "Vendor",
+        discipline: "Traffic Systems",
+        email: "vendor.traffic@scientechnic.local",
+        phone: "+971500000009",
+      },
+      {
+        employeeCode: "RES-SUB-001",
+        name: "Civil Works Subcontractor",
+        type: ResourceType.SUBCONTRACTOR,
+        designation: "Subcontractor",
+        discipline: "Civil Works",
+        email: "subcontractor.civil@scientechnic.local",
+        phone: "+971500000010",
+      },
+    ];
 
-  const pm = await prisma.user.upsert({
-    where: { email: "pm@example.com" },
-    update: {
-      name: "A. Karim",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "A. Karim",
-      email: "pm@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+    for (const resource of resources) {
+      await prisma.resource.upsert({
+        where: {
+          employeeCode: resource.employeeCode,
+        },
+        update: {
+          name: resource.name,
+          type: resource.type,
+          designation: resource.designation,
+          discipline: resource.discipline,
+          email: resource.email,
+          phone: resource.phone,
+          isActive: true,
+        },
+        create: {
+          employeeCode: resource.employeeCode,
+          name: resource.name,
+          type: resource.type,
+          designation: resource.designation,
+          discipline: resource.discipline,
+          email: resource.email,
+          phone: resource.phone,
+          isActive: true,
+        },
+      });
+    }
 
-  const pm2 = await prisma.user.upsert({
-    where: { email: "pm2@example.com" },
-    update: {
-      name: "N. Rashid",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "N. Rashid",
-      email: "pm2@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+    console.log(`Seeded ${resources.length} resources.`);
+  }
 
-  const pm3 = await prisma.user.upsert({
-    where: { email: "pm3@example.com" },
-    update: {
-      name: "S. Mehta",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "S. Mehta",
-      email: "pm3@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+  async function main() {
+    console.log("Starting seed...");
 
-  const pm4 = await prisma.user.upsert({
-    where: { email: "pm4@example.com" },
-    update: {
-      name: "F. Al Hamad",
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-    create: {
-      name: "F. Al Hamad",
-      email: "pm4@example.com",
-      passwordHash,
-      role: UserRole.PROJECT_MANAGER,
-      isActive: true,
-    },
-  });
+    await seedDocumentWorkflowStatuses();
+
+    /* ---------------------------------- */
+    /* USERS */
+    /* ---------------------------------- */
+
+    const passwordHash = await bcrypt.hash(
+      process.env.SEED_ADMIN_PASSWORD || "Admin@123",
+      10,
+    );
+
+    const admin = await prisma.user.upsert({
+      where: { email: "admin@example.com" },
+      update: {
+        name: "Admin User",
+        role: UserRole.SUPER_ADMIN,
+        isActive: true,
+      },
+      create: {
+        name: "Admin User",
+        email: "admin@example.com",
+        passwordHash,
+        role: UserRole.SUPER_ADMIN,
+        isActive: true,
+      },
+    });
+
+    const pm = await prisma.user.upsert({
+      where: { email: "pm@example.com" },
+      update: {
+        name: "A. Karim",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "A. Karim",
+        email: "pm@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
+
+    const pm2 = await prisma.user.upsert({
+      where: { email: "pm2@example.com" },
+      update: {
+        name: "N. Rashid",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "N. Rashid",
+        email: "pm2@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
+
+    const pm3 = await prisma.user.upsert({
+      where: { email: "pm3@example.com" },
+      update: {
+        name: "S. Mehta",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "S. Mehta",
+        email: "pm3@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
+
+    const pm4 = await prisma.user.upsert({
+      where: { email: "pm4@example.com" },
+      update: {
+        name: "F. Al Hamad",
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+      create: {
+        name: "F. Al Hamad",
+        email: "pm4@example.com",
+        passwordHash,
+        role: UserRole.PROJECT_MANAGER,
+        isActive: true,
+      },
+    });
 
   /* ---------------------------------- */
   /* PORTFOLIO CATEGORIES */
@@ -220,6 +451,7 @@ async function main() {
     planType?: string;
     stageCode?: string;
     approvalStatusCode?: string;
+    workflowStatusCode?: string;
     approver?: string;
     submittedAt?: Date;
     dueDate?: Date;
@@ -251,6 +483,12 @@ async function main() {
     activityName: string;
     discipline?: string;
     location?: string;
+    roadLocationName?: string;
+    rawRoadCode?: string;
+    packageName?: string;
+    workSectionName?: string;
+    assetReference?: string;
+    locationSource?: ScheduleLocationSource;
     durationDays?: number;
     plannedStart?: Date;
     plannedFinish?: Date;
@@ -272,6 +510,12 @@ async function main() {
     delayDays?: number;
     linkedActivity?: string;
     healthStatus?: HealthStatus;
+    roadLocationName?: string;
+    rawRoadCode?: string;
+    packageName?: string;
+    workSectionName?: string;
+    assetReference?: string;
+    locationSource?: ScheduleLocationSource;
   };
 
   type SeedProjectInput = {
@@ -299,181 +543,34 @@ async function main() {
     milestones?: SeedMilestoneInput[];
   };
 
+  type SeededRoadLocation = {
+    id: string;
+    name: string;
+    normalizedName: string;
+    roadCode: string;
+  };
 
-async function seedResources() {
-  console.log("Seeding resources...");
- 
-  const resources = [
-    {
-      employeeCode: "RES-SE-001",
-      name: "Ahmed Khan",
-      type: ResourceType.SITE_ENGINEER,
-      designation: "Site Engineer",
-      discipline: "ITS",
-      email: "ahmed.khan@scientechnic.local",
-      phone: "+971500000001",
-    },
-    {
-      employeeCode: "RES-SE-002",
-      name: "Ravi Menon",
-      type: ResourceType.SITE_ENGINEER,
-      designation: "Site Engineer",
-      discipline: "Traffic Systems",
-      email: "ravi.menon@scientechnic.local",
-      phone: "+971500000002",
-    },
-    {
-      employeeCode: "RES-FE-001",
-      name: "Mohammed Ali",
-      type: ResourceType.FIELD_ENGINEER,
-      designation: "Field Engineer",
-      discipline: "Site Execution",
-      email: "mohammed.ali@scientechnic.local",
-      phone: "+971500000003",
-    },
-    {
-      employeeCode: "RES-SUP-001",
-      name: "Suresh Kumar",
-      type: ResourceType.SUPERVISOR,
-      designation: "Supervisor",
-      discipline: "Civil Works",
-      email: "suresh.kumar@scientechnic.local",
-      phone: "+971500000004",
-    },
-    {
-      employeeCode: "RES-SUP-002",
-      name: "Imran Shaikh",
-      type: ResourceType.SUPERVISOR,
-      designation: "Supervisor",
-      discipline: "ITS Installation",
-      email: "imran.shaikh@scientechnic.local",
-      phone: "+971500000005",
-    },
-    {
-      employeeCode: "RES-TECH-001",
-      name: "Arun Joseph",
-      type: ResourceType.TECHNICIAN,
-      designation: "Technician",
-      discipline: "ITS Installation",
-      email: "arun.joseph@scientechnic.local",
-      phone: "+971500000006",
-    },
-    {
-      employeeCode: "RES-TECH-002",
-      name: "Bilal Hassan",
-      type: ResourceType.TECHNICIAN,
-      designation: "Technician",
-      discipline: "Traffic Signal",
-      email: "bilal.hassan@scientechnic.local",
-      phone: "+971500000007",
-    },
-    {
-      employeeCode: "RES-TECH-003",
-      name: "Naveen Raj",
-      type: ResourceType.TECHNICIAN,
-      designation: "Technician",
-      discipline: "ELV",
-      email: "naveen.raj@scientechnic.local",
-      phone: "+971500000008",
-    },
-    {
-      employeeCode: "RES-CREW-001",
-      name: "Civil Installation Crew A",
-      type: ResourceType.CREW,
-      designation: "Civil Crew",
-      discipline: "Civil Works",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-CREW-002",
-      name: "ITS Installation Crew A",
-      type: ResourceType.CREW,
-      designation: "ITS Crew",
-      discipline: "ITS Installation",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-EQ-001",
-      name: "Boom Lift",
-      type: ResourceType.EQUIPMENT,
-      designation: "Equipment",
-      discipline: "Access Equipment",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-EQ-002",
-      name: "Cable Pulling Machine",
-      type: ResourceType.EQUIPMENT,
-      designation: "Equipment",
-      discipline: "Installation Equipment",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-MAT-001",
-      name: "Fiber Optic Cable",
-      type: ResourceType.MATERIAL,
-      designation: "Material",
-      discipline: "Fiber Network",
-      email: null,
-      phone: null,
-    },
-    {
-      employeeCode: "RES-VEN-001",
-      name: "Traffic Signal Vendor",
-      type: ResourceType.VENDOR,
-      designation: "Vendor",
-      discipline: "Traffic Systems",
-      email: "vendor.traffic@scientechnic.local",
-      phone: "+971500000009",
-    },
-    {
-      employeeCode: "RES-SUB-001",
-      name: "Civil Works Subcontractor",
-      type: ResourceType.SUBCONTRACTOR,
-      designation: "Subcontractor",
-      discipline: "Civil Works",
-      email: "subcontractor.civil@scientechnic.local",
-      phone: "+971500000010",
-    },
-  ];
- 
-  for (const resource of resources) {
-    await prisma.resource.upsert({
-      where: {
-        employeeCode: resource.employeeCode,
-      },
-      update: {
-        name: resource.name,
-        type: resource.type,
-        designation: resource.designation,
-        discipline: resource.discipline,
-        email: resource.email,
-        phone: resource.phone,
-        isActive: true,
-      },
-      create: {
-        employeeCode: resource.employeeCode,
-        name: resource.name,
-        type: resource.type,
-        designation: resource.designation,
-        discipline: resource.discipline,
-        email: resource.email,
-        phone: resource.phone,
-        isActive: true,
-      },
-    });
-  }
- 
-  console.log(`Seeded ${resources.length} resources.`);
-}
+  type SeedResourceInput = {
+    name: string;
+    email: string;
+    phone?: string;
+    designation?: string;
+    discipline?: string;
+    employeeCode?: string;
+    userId?: string;
+  };
 
-
-
-  
+  type SeedProjectResourceAssignmentInput = {
+    projectCode: string;
+    resourceEmail: string;
+    roadLocationName?: string;
+    scope: ResourceAssignmentScope;
+    packageName?: string;
+    workSectionName?: string;
+    plannedStart?: Date;
+    plannedFinish?: Date;
+    remarks?: string;
+  };
 
   /* ---------------------------------- */
   /* LOOKUP TABLES */
@@ -532,61 +629,152 @@ async function seedResources() {
 
     const documentApprovalStatuses = [
       {
-        code: "approved",
-        label: "Approved",
-        severity: "success",
+        code: "in-preparation",
+        label: "In preparation",
+        severity: "purple",
         displayOrder: 1,
+      },
+      {
+        code: "not-submitted",
+        label: "Not Submitted",
+        severity: "purple",
+        displayOrder: 2,
+      },
+      {
+        code: "internal-review",
+        label: "Internal Review",
+        severity: "amber",
+        displayOrder: 3,
       },
       {
         code: "under-review",
         label: "Under review",
-        severity: "info",
-        displayOrder: 2,
-      },
-      {
-        code: "in-preparation",
-        label: "In preparation",
-        severity: "neutral",
-        displayOrder: 3,
-      },
-      {
-        code: "overdue",
-        label: "Overdue",
-        severity: "danger",
+        severity: "amber",
         displayOrder: 4,
+      },
+      {
+        code: "consultant-review",
+        label: "Consultant Review",
+        severity: "amber",
+        displayOrder: 5,
+      },
+      {
+        code: "client-pending",
+        label: "Client Pending",
+        severity: "red",
+        displayOrder: 6,
       },
       {
         code: "at-risk",
         label: "At risk",
-        severity: "warning",
-        displayOrder: 5,
+        severity: "amber",
+        displayOrder: 7,
+      },
+      {
+        code: "overdue",
+        label: "Overdue",
+        severity: "red",
+        displayOrder: 8,
+      },
+      {
+        code: "resubmit",
+        label: "Resubmit",
+        severity: "red",
+        displayOrder: 9,
+      },
+      {
+        code: "approved",
+        label: "Approved",
+        severity: "green",
+        displayOrder: 10,
       },
       {
         code: "rejected",
         label: "Rejected",
-        severity: "danger",
-        displayOrder: 6,
+        severity: "red",
+        displayOrder: 11,
+      },
+      {
+        code: "closed",
+        label: "Closed",
+        severity: "green",
+        displayOrder: 12,
       },
     ];
 
-    for (const status of documentApprovalStatuses) {
+    for (const item of documentApprovalStatuses) {
       await prisma.documentApprovalStatusLookup.upsert({
-        where: { code: status.code },
+        where: { code: item.code },
         update: {
-          label: status.label,
-          severity: status.severity,
-          displayOrder: status.displayOrder,
+          label: item.label,
+          severity: item.severity,
+          displayOrder: item.displayOrder,
           isActive: true,
         },
         create: {
-          code: status.code,
-          label: status.label,
-          severity: status.severity,
-          displayOrder: status.displayOrder,
+          code: item.code,
+          label: item.label,
+          severity: item.severity,
+          displayOrder: item.displayOrder,
           isActive: true,
         },
       });
     }
+
+    const documentDisciplines = [
+      { code: "its", label: "ITS", displayOrder: 1 },
+      { code: "civil", label: "Civil", displayOrder: 2 },
+      { code: "electrical", label: "Electrical", displayOrder: 3 },
+      { code: "testing", label: "Testing", displayOrder: 4 },
+      { code: "material", label: "Material", displayOrder: 5 },
+      { code: "om", label: "O&M", displayOrder: 6 },
+    ];
+
+    for (const item of documentDisciplines) {
+      await prisma.documentDisciplineLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: item.code,
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    const documentOwners = [
+      { code: "engineering", label: "Engineering", displayOrder: 1 },
+      { code: "document-control", label: "Document Control", displayOrder: 2 },
+      { code: "client", label: "Client", displayOrder: 3 },
+      { code: "consultant", label: "Consultant", displayOrder: 4 },
+      { code: "qaqc", label: "QA/QC", displayOrder: 5 },
+      { code: "site-team", label: "Site Team", displayOrder: 6 },
+      { code: "procurement", label: "Procurement", displayOrder: 7 },
+    ];
+
+    for (const item of documentOwners) {
+      await prisma.documentOwnerLookup.upsert({
+        where: { code: item.code },
+        update: {
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+        create: {
+          code: item.code,
+          label: item.label,
+          displayOrder: item.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    await seedDocumentWorkflowStatuses();
 
     const projectHealthStatuses = [
       {
@@ -788,13 +976,13 @@ async function seedResources() {
         },
       });
 
-      const approvalStatusCode =
-        doc.approvalStatusCode ?? "in-preparation";
+      const approvalStatusCode = doc.approvalStatusCode ?? "in-preparation";
 
       const documentData = {
         planType: doc.planType ?? "BASELINE",
         stageCode: doc.stageCode ?? "pre-construction",
         approvalStatusCode,
+        workflowStatusCode: doc.workflowStatusCode ?? "draft",
         approver: doc.approver ?? null,
         submittedAt: doc.submittedAt ?? null,
         dueDate: doc.dueDate ?? null,
@@ -845,6 +1033,43 @@ async function seedResources() {
 
     if (input.activities?.length) {
       for (const activity of input.activities) {
+        const matchedRoadLocation = findRoadLocationByName(
+          activity.roadLocationName ?? activity.location,
+        );
+
+        if (matchedRoadLocation) {
+          await prisma.projectRoadLocation.upsert({
+            where: {
+              projectId_roadLocationId: {
+                projectId: project.id,
+                roadLocationId: matchedRoadLocation.id,
+              },
+            },
+            update: {},
+            create: {
+              projectId: project.id,
+              roadLocationId: matchedRoadLocation.id,
+            },
+          });
+        }
+
+        const activityLocationData = {
+          location: activity.location ?? activity.roadLocationName ?? null,
+          roadLocationId: matchedRoadLocation?.id ?? null,
+          rawLocationName:
+            activity.roadLocationName ?? activity.location ?? null,
+          rawRoadCode:
+            activity.rawRoadCode ?? matchedRoadLocation?.roadCode ?? null,
+          packageName: activity.packageName ?? null,
+          workSectionName: activity.workSectionName ?? null,
+          assetReference: activity.assetReference ?? null,
+          locationSource:
+            activity.locationSource ??
+            (matchedRoadLocation
+              ? ScheduleLocationSource.EXCEL_PARENT_ROW
+              : ScheduleLocationSource.NONE),
+        };
+
         await prisma.planningActivity.upsert({
           where: {
             projectId_activityId: {
@@ -857,7 +1082,6 @@ async function seedResources() {
             wbsCode: activity.wbsCode ?? null,
             activityName: activity.activityName,
             discipline: activity.discipline ?? null,
-            location: activity.location ?? null,
             durationDays: activity.durationDays ?? null,
             plannedStart: activity.plannedStart ?? null,
             plannedFinish: activity.plannedFinish ?? null,
@@ -868,6 +1092,7 @@ async function seedResources() {
             owner: activity.owner ?? null,
             isCritical: activity.isCritical ?? false,
             healthStatus: activity.healthStatus ?? HealthStatus.ON_TRACK,
+            ...activityLocationData,
           },
           create: {
             projectId: project.id,
@@ -876,7 +1101,6 @@ async function seedResources() {
             activityId: activity.activityId,
             activityName: activity.activityName,
             discipline: activity.discipline ?? null,
-            location: activity.location ?? null,
             durationDays: activity.durationDays ?? null,
             plannedStart: activity.plannedStart ?? null,
             plannedFinish: activity.plannedFinish ?? null,
@@ -887,6 +1111,7 @@ async function seedResources() {
             owner: activity.owner ?? null,
             isCritical: activity.isCritical ?? false,
             healthStatus: activity.healthStatus ?? HealthStatus.ON_TRACK,
+            ...activityLocationData,
           },
         });
       }
@@ -902,6 +1127,26 @@ async function seedResources() {
           },
         });
 
+        const matchedRoadLocation = findRoadLocationByName(
+          milestone.roadLocationName,
+        );
+
+        if (matchedRoadLocation) {
+          await prisma.projectRoadLocation.upsert({
+            where: {
+              projectId_roadLocationId: {
+                projectId: project.id,
+                roadLocationId: matchedRoadLocation.id,
+              },
+            },
+            update: {},
+            create: {
+              projectId: project.id,
+              roadLocationId: matchedRoadLocation.id,
+            },
+          });
+        }
+
         const milestoneData = {
           documentId: primaryDocument?.id ?? null,
           baselineDate: milestone.baselineDate ?? null,
@@ -910,6 +1155,19 @@ async function seedResources() {
           delayDays: milestone.delayDays ?? 0,
           linkedActivity: milestone.linkedActivity ?? null,
           healthStatus: milestone.healthStatus ?? HealthStatus.ON_TRACK,
+
+          roadLocationId: matchedRoadLocation?.id ?? null,
+          rawLocationName: milestone.roadLocationName ?? null,
+          rawRoadCode:
+            milestone.rawRoadCode ?? matchedRoadLocation?.roadCode ?? null,
+          packageName: milestone.packageName ?? null,
+          workSectionName: milestone.workSectionName ?? null,
+          assetReference: milestone.assetReference ?? null,
+          locationSource:
+            milestone.locationSource ??
+            (matchedRoadLocation
+              ? ScheduleLocationSource.EXCEL_PARENT_ROW
+              : ScheduleLocationSource.NONE),
         };
 
         if (existingMilestone) {
@@ -1289,6 +1547,7 @@ async function seedResources() {
         planType: record.stageCode,
         stageCode: record.stageCode,
         approvalStatusCode: record.approvalStatusCode,
+        workflowStatusCode: "draft",
         approver: record.approver,
         submittedAt: record.submittedAt,
         dueDate,
@@ -1549,6 +1808,641 @@ async function seedResources() {
     console.log("Invoices seeded.");
   }
 
+  async function upsertUserByEmail(input: {
+    name: string;
+    email: string;
+    role: UserRole;
+  }) {
+    return prisma.user.upsert({
+      where: {
+        email: input.email,
+      },
+      update: {
+        name: input.name,
+        role: input.role,
+        isActive: true,
+      },
+      create: {
+        name: input.name,
+        email: input.email,
+        passwordHash,
+        role: input.role,
+        isActive: true,
+      },
+    });
+  }
+
+  async function upsertResourceByEmail(input: SeedResourceInput) {
+    const existingResource = await prisma.resource.findFirst({
+      where: {
+        email: input.email,
+      },
+    });
+
+    const data = {
+      name: input.name,
+      type: ResourceType.FIELD_ENGINEER,
+      discipline: input.discipline ?? "Civil / ITS",
+      designation: input.designation ?? "Field Engineer",
+      employeeCode: input.employeeCode ?? null,
+      email: input.email,
+      phone: input.phone ?? null,
+      userId: input.userId ?? null,
+      isActive: true,
+    };
+
+    if (existingResource) {
+      return prisma.resource.update({
+        where: {
+          id: existingResource.id,
+        },
+        data,
+      });
+    }
+
+    return prisma.resource.create({
+      data,
+    });
+  }
+
+  async function seedFieldResourcesAndAssignments() {
+    const fieldUser1 = await upsertUserByEmail({
+      name: "M. Nair",
+      email: "field1@example.com",
+      role: UserRole.ENGINEER,
+    });
+
+    const fieldUser2 = await upsertUserByEmail({
+      name: "K. Thomas",
+      email: "field2@example.com",
+      role: UserRole.ENGINEER,
+    });
+
+    const fieldUser3 = await upsertUserByEmail({
+      name: "Y. Khan",
+      email: "field3@example.com",
+      role: UserRole.ENGINEER,
+    });
+
+    await upsertResourceByEmail({
+      name: "M. Nair",
+      email: "field1@example.com",
+      phone: "+971500000001",
+      employeeCode: "FE-001",
+      discipline: "Civil / Trial Trenches",
+      designation: "Field Engineer",
+      userId: fieldUser1.id,
+    });
+
+    await upsertResourceByEmail({
+      name: "K. Thomas",
+      email: "field2@example.com",
+      phone: "+971500000002",
+      employeeCode: "FE-002",
+      discipline: "Duct / Fiber",
+      designation: "Field Engineer",
+      userId: fieldUser2.id,
+    });
+
+    await upsertResourceByEmail({
+      name: "Y. Khan",
+      email: "field3@example.com",
+      phone: "+971500000003",
+      employeeCode: "FE-003",
+      discipline: "Traffic / ITS Maintenance",
+      designation: "Field Engineer",
+      userId: fieldUser3.id,
+    });
+
+    const assignments: SeedProjectResourceAssignmentInput[] = [
+      {
+        projectCode: "PRJ-001",
+        resourceEmail: "field1@example.com",
+        roadLocationName: "Al Khail Street",
+        scope: ResourceAssignmentScope.ROAD_LOCATION,
+        packageName: "PACKAGE 01",
+        workSectionName: "TT EXECUTION FOR 25M POLE - D68/CCTV-G-02",
+        plannedStart: d("2026-08-21"),
+        plannedFinish: d("2026-09-02"),
+        remarks: "Assigned for trial trench execution on Al Khail Street.",
+      },
+      {
+        projectCode: "PRJ-001",
+        resourceEmail: "field2@example.com",
+        roadLocationName: "Al Khawaneej Road",
+        scope: ResourceAssignmentScope.ROAD_LOCATION,
+        packageName: "PACKAGE 01",
+        workSectionName: "TT EXECUTION FOR 25M POLE - D89/CCTV-G-02",
+        plannedStart: d("2026-08-25"),
+        plannedFinish: d("2026-09-08"),
+        remarks:
+          "Assigned for trial trench and duct execution on Al Khawaneej Road.",
+      },
+      {
+        projectCode: "PRJ-001",
+        resourceEmail: "field1@example.com",
+        roadLocationName: "Al Rebat St",
+        scope: ResourceAssignmentScope.ROAD_LOCATION,
+        packageName: "PACKAGE 01",
+        workSectionName: "TT EXECUTION FOR 25M POLE - D83/CCTV-G-01",
+        plannedStart: d("2026-08-29"),
+        plannedFinish: d("2026-09-14"),
+        remarks: "Assigned for Al Rebat Street field execution.",
+      },
+      {
+        projectCode: "PRJ-007",
+        resourceEmail: "field3@example.com",
+        roadLocationName: "Sheikh Zayed Rd",
+        scope: ResourceAssignmentScope.ROAD_LOCATION,
+        plannedStart: d("2026-05-01"),
+        plannedFinish: d("2026-06-30"),
+        remarks: "Assigned for SZR signal maintenance works.",
+      },
+    ];
+
+    for (const assignment of assignments) {
+      const project = await prisma.project.findUnique({
+        where: {
+          code: assignment.projectCode,
+        },
+      });
+
+      if (!project) {
+        throw new Error(
+          `Cannot seed resource assignment: project ${assignment.projectCode} not found`,
+        );
+      }
+
+      const resource = await prisma.resource.findFirst({
+        where: {
+          email: assignment.resourceEmail,
+        },
+      });
+
+      if (!resource) {
+        throw new Error(
+          `Cannot seed resource assignment: resource ${assignment.resourceEmail} not found`,
+        );
+      }
+
+      const roadLocation = findRoadLocationByName(assignment.roadLocationName);
+
+      if (assignment.roadLocationName && !roadLocation) {
+        throw new Error(
+          `Cannot seed resource assignment: road location ${assignment.roadLocationName} not found`,
+        );
+      }
+
+      if (roadLocation) {
+        await prisma.projectRoadLocation.upsert({
+          where: {
+            projectId_roadLocationId: {
+              projectId: project.id,
+              roadLocationId: roadLocation.id,
+            },
+          },
+          update: {},
+          create: {
+            projectId: project.id,
+            roadLocationId: roadLocation.id,
+          },
+        });
+      }
+
+      await prisma.projectResourceAssignment.deleteMany({
+        where: {
+          projectId: project.id,
+          resourceId: resource.id,
+          roadLocationId: roadLocation?.id ?? null,
+          scope: assignment.scope,
+          packageName: assignment.packageName ?? null,
+          workSectionName: assignment.workSectionName ?? null,
+        },
+      });
+
+      await prisma.projectResourceAssignment.create({
+        data: {
+          projectId: project.id,
+          resourceId: resource.id,
+          roadLocationId: roadLocation?.id ?? null,
+          scope: assignment.scope,
+          packageName: assignment.packageName ?? null,
+          workSectionName: assignment.workSectionName ?? null,
+          plannedStart: assignment.plannedStart ?? null,
+          plannedFinish: assignment.plannedFinish ?? null,
+          remarks: assignment.remarks ?? null,
+          isActive: true,
+        },
+      });
+    }
+
+    console.log("Field resources and assignments seeded.");
+  }
+
+  async function seedSampleScheduleImportWithLocations() {
+    const project = await prisma.project.findUnique({
+      where: {
+        code: "PRJ-001",
+      },
+    });
+
+    if (!project) {
+      throw new Error("Cannot seed sample schedule import: PRJ-001 not found");
+    }
+
+    const upload = await prisma.projectScheduleUpload.upsert({
+      where: {
+        projectId_revisionNo: {
+          projectId: project.id,
+          revisionNo: 1,
+        },
+      },
+      update: {
+        fileName: "PRJ-001 trial trenches baseline.xlsx",
+        status: "IMPORTED",
+        totalRows: 40,
+        validRows: 40,
+        errorRows: 0,
+        sheetName: "Baseline",
+        importedAt: new Date(),
+      },
+      create: {
+        projectId: project.id,
+        fileName: "PRJ-001 trial trenches baseline.xlsx",
+        revisionNo: 1,
+        uploadedById: admin.id,
+        status: "IMPORTED",
+        totalRows: 40,
+        validRows: 40,
+        errorRows: 0,
+        sheetName: "Baseline",
+        importedAt: new Date(),
+      },
+    });
+
+    async function upsertWbsItem(input: {
+      parentId?: string | null;
+      wbsCode: string;
+      wbsLevel: number;
+      name: string;
+      startDate?: Date;
+      finishDate?: Date;
+      duration?: number;
+      rowNumber?: number;
+      roadLocationName?: string;
+      rawRoadCode?: string;
+    }) {
+      const roadLocation = findRoadLocationByName(input.roadLocationName);
+
+      if (roadLocation) {
+        await prisma.projectRoadLocation.upsert({
+          where: {
+            projectId_roadLocationId: {
+              projectId: project.id,
+              roadLocationId: roadLocation.id,
+            },
+          },
+          update: {},
+          create: {
+            projectId: project.id,
+            roadLocationId: roadLocation.id,
+          },
+        });
+      }
+
+      return prisma.wbsItem.upsert({
+        where: {
+          uploadId_wbsCode: {
+            uploadId: upload.id,
+            wbsCode: input.wbsCode,
+          },
+        },
+        update: {
+          parentId: input.parentId ?? null,
+          wbsLevel: input.wbsLevel,
+          name: input.name,
+          startDate: input.startDate ?? null,
+          finishDate: input.finishDate ?? null,
+          duration: input.duration ?? null,
+          rowNumber: input.rowNumber ?? null,
+          roadLocationId: roadLocation?.id ?? null,
+          rawLocationName: input.roadLocationName ?? null,
+          rawRoadCode: input.rawRoadCode ?? roadLocation?.roadCode ?? null,
+          locationSource: roadLocation
+            ? ScheduleLocationSource.EXCEL_PARENT_ROW
+            : ScheduleLocationSource.NONE,
+        },
+        create: {
+          projectId: project.id,
+          uploadId: upload.id,
+          parentId: input.parentId ?? null,
+          wbsCode: input.wbsCode,
+          wbsLevel: input.wbsLevel,
+          name: input.name,
+          startDate: input.startDate ?? null,
+          finishDate: input.finishDate ?? null,
+          duration: input.duration ?? null,
+          rowNumber: input.rowNumber ?? null,
+          roadLocationId: roadLocation?.id ?? null,
+          rawLocationName: input.roadLocationName ?? null,
+          rawRoadCode: input.rawRoadCode ?? roadLocation?.roadCode ?? null,
+          locationSource: roadLocation
+            ? ScheduleLocationSource.EXCEL_PARENT_ROW
+            : ScheduleLocationSource.NONE,
+        },
+      });
+    }
+
+    async function upsertScheduleActivity(input: {
+      wbsItemId: string;
+      activityCode: string;
+      activityName: string;
+      duration?: number;
+      startDate?: Date;
+      finishDate?: Date;
+      rowNumber?: number;
+      roadLocationName?: string;
+      rawRoadCode?: string;
+      packageName?: string;
+      workSectionName?: string;
+      assetReference?: string;
+      isCritical?: boolean;
+    }) {
+      const roadLocation = findRoadLocationByName(input.roadLocationName);
+
+      if (roadLocation) {
+        await prisma.projectRoadLocation.upsert({
+          where: {
+            projectId_roadLocationId: {
+              projectId: project.id,
+              roadLocationId: roadLocation.id,
+            },
+          },
+          update: {},
+          create: {
+            projectId: project.id,
+            roadLocationId: roadLocation.id,
+          },
+        });
+      }
+
+      return prisma.scheduleActivity.upsert({
+        where: {
+          uploadId_activityCode: {
+            uploadId: upload.id,
+            activityCode: input.activityCode,
+          },
+        },
+        update: {
+          wbsItemId: input.wbsItemId,
+          activityName: input.activityName,
+          duration: input.duration ?? null,
+          startDate: input.startDate ?? null,
+          finishDate: input.finishDate ?? null,
+          rowNumber: input.rowNumber ?? null,
+          isCritical: input.isCritical ?? false,
+          status: ActivityStatus.NOT_STARTED,
+          roadLocationId: roadLocation?.id ?? null,
+          rawLocationName: input.roadLocationName ?? null,
+          rawRoadCode: input.rawRoadCode ?? roadLocation?.roadCode ?? null,
+          packageName: input.packageName ?? null,
+          workSectionName: input.workSectionName ?? null,
+          assetReference: input.assetReference ?? null,
+          locationSource: roadLocation
+            ? ScheduleLocationSource.EXCEL_PARENT_ROW
+            : ScheduleLocationSource.NONE,
+        },
+        create: {
+          projectId: project.id,
+          uploadId: upload.id,
+          wbsItemId: input.wbsItemId,
+          activityCode: input.activityCode,
+          activityName: input.activityName,
+          duration: input.duration ?? null,
+          startDate: input.startDate ?? null,
+          finishDate: input.finishDate ?? null,
+          rowNumber: input.rowNumber ?? null,
+          isCritical: input.isCritical ?? false,
+          status: ActivityStatus.NOT_STARTED,
+          roadLocationId: roadLocation?.id ?? null,
+          rawLocationName: input.roadLocationName ?? null,
+          rawRoadCode: input.rawRoadCode ?? roadLocation?.roadCode ?? null,
+          packageName: input.packageName ?? null,
+          workSectionName: input.workSectionName ?? null,
+          assetReference: input.assetReference ?? null,
+          locationSource: roadLocation
+            ? ScheduleLocationSource.EXCEL_PARENT_ROW
+            : ScheduleLocationSource.NONE,
+        },
+      });
+    }
+
+    const package01 = await upsertWbsItem({
+      wbsCode: "PKG-01",
+      wbsLevel: 6,
+      name: "PACKAGE 01 (25m - 4, 10m - 0, NDRC - 0, Duct - 40m)",
+      startDate: d("2026-07-24"),
+      finishDate: d("2026-09-14"),
+      duration: 53,
+      rowNumber: 6,
+    });
+
+    const alKhailStreet = await upsertWbsItem({
+      parentId: package01.id,
+      wbsCode: "PKG-01-AL-KHAIL-STREET",
+      wbsLevel: 7,
+      name: "AL KHAIL STREET",
+      startDate: d("2026-07-24"),
+      finishDate: d("2026-09-04"),
+      duration: 43,
+      rowNumber: 7,
+      roadLocationName: "Al Khail Street",
+      rawRoadCode: "D68",
+    });
+
+    const alKhailPoleWork = await upsertWbsItem({
+      parentId: alKhailStreet.id,
+      wbsCode: "PKG-01-AL-KHAIL-D68-CCTV-G-02",
+      wbsLevel: 8,
+      name: "TT EXECUTION FOR 25M POLE - D68/CCTV-G-02",
+      startDate: d("2026-07-24"),
+      finishDate: d("2026-09-02"),
+      duration: 41,
+      rowNumber: 8,
+      roadLocationName: "Al Khail Street",
+      rawRoadCode: "D68",
+    });
+
+    await upsertScheduleActivity({
+      wbsItemId: alKhailPoleWork.id,
+      activityCode: "PRE-TEX-V-T1-P1-1912",
+      activityName: "Site Setting out",
+      duration: 1,
+      startDate: d("2026-08-21"),
+      finishDate: d("2026-08-21"),
+      rowNumber: 9,
+      roadLocationName: "Al Khail Street",
+      rawRoadCode: "D68",
+      packageName: "PACKAGE 01",
+      workSectionName: "TT EXECUTION FOR 25M POLE - D68/CCTV-G-02",
+      assetReference: "D68/CCTV-G-02",
+    });
+
+    await upsertScheduleActivity({
+      wbsItemId: alKhailPoleWork.id,
+      activityCode: "PRE-TEX-V-T1-P1-1916",
+      activityName: "Excavation",
+      duration: 1,
+      startDate: d("2026-08-22"),
+      finishDate: d("2026-08-22"),
+      rowNumber: 13,
+      roadLocationName: "Al Khail Street",
+      rawRoadCode: "D68",
+      packageName: "PACKAGE 01",
+      workSectionName: "TT EXECUTION FOR 25M POLE - D68/CCTV-G-02",
+      assetReference: "D68/CCTV-G-02",
+      isCritical: true,
+    });
+
+    await upsertScheduleActivity({
+      wbsItemId: alKhailPoleWork.id,
+      activityCode: "PRE-TEX-V-T1-P1-1918",
+      activityName: "Backfilling",
+      duration: 1,
+      startDate: d("2026-09-02"),
+      finishDate: d("2026-09-02"),
+      rowNumber: 15,
+      roadLocationName: "Al Khail Street",
+      rawRoadCode: "D68",
+      packageName: "PACKAGE 01",
+      workSectionName: "TT EXECUTION FOR 25M POLE - D68/CCTV-G-02",
+      assetReference: "D68/CCTV-G-02",
+    });
+
+    const alKhawaneejRoad = await upsertWbsItem({
+      parentId: package01.id,
+      wbsCode: "PKG-01-AL-KHAWANEEJ-ROAD",
+      wbsLevel: 7,
+      name: "AL KHAWANEEJ ROAD",
+      startDate: d("2026-07-24"),
+      finishDate: d("2026-09-08"),
+      duration: 47,
+      rowNumber: 30,
+      roadLocationName: "Al Khawaneej Road",
+      rawRoadCode: "D89",
+    });
+
+    const alKhawaneejPoleWork = await upsertWbsItem({
+      parentId: alKhawaneejRoad.id,
+      wbsCode: "PKG-01-AL-KHAWANEEJ-D89-CCTV-G-02",
+      wbsLevel: 8,
+      name: "TT EXECUTION FOR 25M POLE - D89/CCTV-G-02",
+      startDate: d("2026-07-24"),
+      finishDate: d("2026-09-06"),
+      duration: 45,
+      rowNumber: 31,
+      roadLocationName: "Al Khawaneej Road",
+      rawRoadCode: "D89",
+    });
+
+    await upsertScheduleActivity({
+      wbsItemId: alKhawaneejPoleWork.id,
+      activityCode: "PRE-TEX-V-T1-P1-2170",
+      activityName: "Site Setting out",
+      duration: 1,
+      startDate: d("2026-08-25"),
+      finishDate: d("2026-08-25"),
+      rowNumber: 32,
+      roadLocationName: "Al Khawaneej Road",
+      rawRoadCode: "D89",
+      packageName: "PACKAGE 01",
+      workSectionName: "TT EXECUTION FOR 25M POLE - D89/CCTV-G-02",
+      assetReference: "D89/CCTV-G-02",
+    });
+
+    const alRebatStreet = await upsertWbsItem({
+      parentId: package01.id,
+      wbsCode: "PKG-01-AL-REBAT-ST",
+      wbsLevel: 7,
+      name: "AL REBAT ST",
+      startDate: d("2026-07-24"),
+      finishDate: d("2026-09-14"),
+      duration: 53,
+      rowNumber: 60,
+      roadLocationName: "Al Rebat St",
+      rawRoadCode: "D83",
+    });
+
+    const alRebatPoleWork = await upsertWbsItem({
+      parentId: alRebatStreet.id,
+      wbsCode: "PKG-01-AL-REBAT-D83-CCTV-G-01",
+      wbsLevel: 8,
+      name: "TT EXECUTION FOR 25M POLE - D83/CCTV-G-01",
+      startDate: d("2026-07-24"),
+      finishDate: d("2026-09-10"),
+      duration: 49,
+      rowNumber: 61,
+      roadLocationName: "Al Rebat St",
+      rawRoadCode: "D83",
+    });
+
+    await upsertScheduleActivity({
+      wbsItemId: alRebatPoleWork.id,
+      activityCode: "PRE-TEX-V-T1-P1-1950",
+      activityName: "Site Setting out",
+      duration: 1,
+      startDate: d("2026-08-29"),
+      finishDate: d("2026-08-29"),
+      rowNumber: 62,
+      roadLocationName: "Al Rebat St",
+      rawRoadCode: "D83",
+      packageName: "PACKAGE 01",
+      workSectionName: "TT EXECUTION FOR 25M POLE - D83/CCTV-G-01",
+      assetReference: "D83/CCTV-G-01",
+    });
+
+    console.log("Sample schedule import with road locations seeded.");
+  }
+
+  await prisma.systemSetting.upsert({
+    where: { key: "jwt_expiry" },
+    update: {},
+    create: {
+      key: "jwt_expiry",
+      label: "JWT Expiry",
+      value: "1 day",
+      category: "Security",
+      status: "Active",
+      description: "Authentication token expiry duration",
+    },
+  });
+
+  await prisma.systemSetting.upsert({
+    where: { key: "excel_upload_max_size" },
+    update: {},
+    create: {
+      key: "excel_upload_max_size",
+      label: "Excel Upload Max Size",
+      value: "25MB",
+      category: "Planning",
+      status: "Active",
+      description: "Maximum upload size for planning Excel files",
+    },
+  });
+
+  await prisma.systemSetting.upsert({
+    where: { key: "cors_origin" },
+    update: {},
+    create: {
+      key: "cors_origin",
+      label: "CORS Origin",
+      value:
+        "http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:3005",
+      category: "Security",
+      status: "Pending",
+      description: "Allowed frontend origin",
+    },
+  });
 
 
 
@@ -1597,6 +2491,261 @@ await prisma.systemSetting.upsert({
   /* PROJECTS */
   /* ---------------------------------- */
 
+  async function seedRoadLocations() {
+    const roadLocations = [
+      {
+        name: "Al Khail Street",
+        roadCode: "D68",
+        aliases: ["AL KHAIL STREET", "AL KHAIL ST"],
+      },
+      {
+        name: "Al Khawaneej Road",
+        roadCode: "D89",
+        aliases: ["AL KHAWANEEJ ROAD", "AL KHAWANEEJ RD"],
+      },
+      {
+        name: "Al Rebat St",
+        roadCode: "D83",
+        aliases: ["AL REBAT ST", "AL REBAT STREET"],
+      },
+      {
+        name: "Marakech Street",
+        roadCode: "D68",
+        aliases: ["MARAKECH STREET", "MARRAKECH STREET", "MARAKECH ST"],
+      },
+      {
+        name: "Riyadh Street",
+        roadCode: "D81",
+        aliases: ["RIYADH STREET", "RIYADH ST"],
+      },
+      {
+        name: "Sheikh Zayed Rd",
+        roadCode: "E11",
+        aliases: ["SHEIKH ZAYED ROAD", "SHEIKH ZAYED RD", "SZR"],
+      },
+      {
+        name: "AL ASAYEL STREET",
+        roadCode: "D72",
+        aliases: ["AL ASAYEL STREET", "AL ASAYEL ST"],
+      },
+      {
+        name: "Al Khail Rd",
+        roadCode: "E44",
+        aliases: ["AL KHAIL ROAD", "AL KHAIL RD"],
+      },
+      {
+        name: "Al Safa Street",
+        roadCode: "D71",
+        aliases: ["AL SAFA STREET", "AL SAFA ST"],
+      },
+      {
+        name: "Al Wasl St",
+        roadCode: "D92",
+        aliases: ["AL WASL ST", "AL WASL STREET"],
+      },
+      {
+        name: "First al khail Rd",
+        roadCode: "D86",
+        aliases: ["FIRST AL KHAIL ROAD", "FIRST AL KHAIL RD"],
+      },
+      {
+        name: "Garn al sabkha St",
+        roadCode: "D59",
+        aliases: ["GARN AL SABKHA ST", "GARN AL SABKHA STREET"],
+      },
+      {
+        name: "Hessa Street",
+        roadCode: "D61",
+        aliases: ["HESSA STREET", "HESSA ST"],
+      },
+      {
+        name: "Jumeirah Road",
+        roadCode: "D94",
+        aliases: ["JUMEIRAH ROAD", "JUMEIRAH RD"],
+      },
+      {
+        name: "Latifa Bint Hamdan Street",
+        roadCode: "D67",
+        aliases: ["LATIFA BINT HAMDAN STREET", "LATIFA BINT HAMDAN ST"],
+      },
+      {
+        name: "Meydan & Manama Road",
+        roadCode: "D77",
+        aliases: ["MEYDAN & MANAMA ROAD", "MEYDAN AND MANAMA ROAD"],
+      },
+      {
+        name: "Al Khaleej Road",
+        roadCode: "D92",
+        aliases: ["AL KHALEEJ ROAD", "AL KHALEEJ RD"],
+      },
+      {
+        name: "Infinity Bridge",
+        roadCode: "D85",
+        aliases: ["INFINITY BRIDGE"],
+      },
+      {
+        name: "Kuwait Street",
+        roadCode: "D77",
+        aliases: ["KUWAIT STREET", "KUWAIT ST"],
+      },
+      {
+        name: "Oud Maitha Street",
+        roadCode: "D79",
+        aliases: ["OUD MAITHA STREET", "OUD MAITHA ST"],
+      },
+      {
+        name: "Zabeel Street",
+        roadCode: "D84",
+        aliases: ["ZABEEL STREET", "ZABEEL ST"],
+      },
+      {
+        name: "Cairo St",
+        roadCode: "D95",
+        aliases: ["CAIRO ST", "CAIRO STREET"],
+      },
+      {
+        name: "Al Yalayis St",
+        roadCode: "D57",
+        aliases: ["AL YALAYIS ST", "AL YALAYIS STREET"],
+      },
+      {
+        name: "Emirates Rd",
+        roadCode: "E611",
+        aliases: ["EMIRATES ROAD", "EMIRATES RD"],
+      },
+      {
+        name: "JAFZA Industrial area",
+        roadCode: "D86",
+        aliases: ["JAFZA INDUSTRIAL AREA", "JAFZA INDUSTRIAL ZONE"],
+      },
+      {
+        name: "SMBZR",
+        roadCode: "E311",
+        aliases: [
+          "SMBZR",
+          "SHEIKH MOHAMMED BIN ZAYED ROAD",
+          "SHEIKH MOHAMMED BIN ZAYED RD",
+        ],
+      },
+      {
+        name: "Sheikh Zayed bin Hamdan Al Nahyan Street",
+        roadCode: "D54",
+        aliases: [
+          "SHEIKH ZAYED BIN HAMDAN AL NAHYAN STREET",
+          "SHEIKH ZAYED BIN HAMDAN AL NAHYAN ST",
+        ],
+      },
+      {
+        name: "DXB-Al Ain Rd",
+        roadCode: "E66",
+        aliases: ["DXB-AL AIN RD", "DUBAI AL AIN ROAD", "DUBAI AL AIN RD"],
+      },
+      {
+        name: "Nad Al Hammar Road",
+        roadCode: "D62",
+        aliases: ["NAD AL HAMMAR ROAD", "NAD AL HAMMAR RD"],
+      },
+      {
+        name: "Al Fay Road",
+        roadCode: "E44",
+        aliases: ["AL FAY ROAD", "AL FAY RD"],
+      },
+      {
+        name: "Algeria St",
+        roadCode: "D56",
+        aliases: ["ALGERIA ST", "ALGERIA STREET"],
+      },
+      {
+        name: "Ras al khor al awir",
+        roadCode: "E44",
+        aliases: [
+          "RAS AL KHOR AL AWIR",
+          "RAS AL KHOR AL AWEER",
+          "RAS AL KHOR ROAD",
+        ],
+      },
+      {
+        name: "STREET 123",
+        roadCode: "D61",
+        aliases: ["STREET 123", "ST 123"],
+      },
+      {
+        name: "Umm Suqueim",
+        roadCode: "D63",
+        aliases: ["UMM SUQEIM", "UMM SUQUEIM", "UMM SUQEIM STREET"],
+      },
+      {
+        name: "Al Amardi",
+        roadCode: "D50",
+        aliases: ["AL AMARDI", "AL AMARDI ROAD"],
+      },
+      {
+        name: "Al Nahda St",
+        roadCode: "D93",
+        aliases: ["AL NAHDA ST", "AL NAHDA STREET"],
+      },
+      {
+        name: "Amman St",
+        roadCode: "D97",
+        aliases: ["AMMAN ST", "AMMAN STREET"],
+      },
+      {
+        name: "Tripoli Road",
+        roadCode: "D83",
+        aliases: ["TRIPOLI ROAD", "TRIPOLI RD"],
+      },
+      {
+        name: "Tunis Street",
+        roadCode: "D93",
+        aliases: ["TUNIS STREET", "TUNIS ST"],
+      },
+    ];
+
+    const lookup = new Map<string, SeededRoadLocation>();
+
+    for (const [index, item] of roadLocations.entries()) {
+      const normalizedName = normalizeLocationName(item.name);
+
+      const savedRoadLocation = await prisma.roadLocation.upsert({
+        where: {
+          normalizedName_roadCode: {
+            normalizedName,
+            roadCode: item.roadCode,
+          },
+        },
+        update: {
+          name: item.name,
+          aliases: item.aliases,
+          isActive: true,
+          displayOrder: index + 1,
+        },
+        create: {
+          name: item.name,
+          normalizedName,
+          roadCode: item.roadCode,
+          aliases: item.aliases,
+          isActive: true,
+          displayOrder: index + 1,
+        },
+      });
+
+      for (const key of getLookupKeys(item.name, item.aliases)) {
+        lookup.set(key, savedRoadLocation);
+      }
+    }
+
+    console.log("Road locations seeded.");
+
+    return lookup;
+  }
+
+  const roadLocationLookup = await seedRoadLocations();
+
+  function findRoadLocationByName(value?: string | null) {
+    if (!value) return null;
+    return roadLocationLookup.get(normalizeLocationName(value)) ?? null;
+  }
+
   await seedProject({
     code: "PRJ-001",
     name: "Al Barsha MEP Works",
@@ -1622,6 +2771,13 @@ await prisma.systemSetting.upsert({
         activityId: "A1020",
         activityName: "Traffic signal controller installation",
         discipline: "ITS",
+        location: "Al Khail Street",
+        roadLocationName: "Al Khail Street",
+        rawRoadCode: "D68",
+        packageName: "PACKAGE 01",
+        workSectionName: "TT EXECUTION FOR 25M POLE - D68/CCTV-G-02",
+        assetReference: "D68/CCTV-G-02",
+        locationSource: ScheduleLocationSource.EXCEL_PARENT_ROW,
         durationDays: 12,
         plannedStart: d("2026-05-02"),
         plannedFinish: d("2026-05-14"),
@@ -1636,6 +2792,13 @@ await prisma.systemSetting.upsert({
         activityId: "A1045",
         activityName: "Fiber backbone testing",
         discipline: "Fiber",
+        location: "Al Rebat St",
+        roadLocationName: "Al Rebat St",
+        rawRoadCode: "D83",
+        packageName: "PACKAGE 01",
+        workSectionName: "TT EXECUTION FOR DUCT 20m",
+        assetReference: "D83/DUCT",
+        locationSource: ScheduleLocationSource.EXCEL_PARENT_ROW,
         durationDays: 7,
         plannedStart: d("2026-05-10"),
         plannedFinish: d("2026-05-17"),
@@ -1846,221 +3009,193 @@ await prisma.systemSetting.upsert({
       },
     ],
   });
-async function seedMaterialResource() {
-  const materialResourceData = [
-    {
-      projectCode: "PRJ-001",
-      resources: [
-        { resourceRole: "HVAC", resourceName: "GI ductwork - flat oval", plannedQty: 240, availableQty: 115, requiredDate: d("2026-05-18"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Civil", resourceName: "Rebar - 16mm", plannedQty: 240, availableQty: 0, requiredDate: d("2026-05-20"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Insulation", resourceName: "Duct insulation wrap", plannedQty: 320, availableQty: 260, requiredDate: d("2026-05-17"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Plumbing", resourceName: "HDPE pipe - 110mm", plannedQty: 180, availableQty: 180, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Electrical", resourceName: "Copper cable - 6mm2", plannedQty: 600, availableQty: 420, requiredDate: d("2026-05-19"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Fire Fighting", resourceName: "Sprinkler heads - 68C", plannedQty: 220, availableQty: 0, requiredDate: d("2026-05-22"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Electrical", resourceName: "Conduit - 25mm", plannedQty: 400, availableQty: 400, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "BMS", resourceName: "BMS sensors", plannedQty: 48, availableQty: 48, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
 
-        { resourceRole: "HVAC technicians", resourceName: "HVAC technicians", plannedQty: 8, availableQty: 8, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Electricians", resourceName: "Electrical crew", plannedQty: 6, availableQty: 4, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Plumbers", resourceName: "Plumbing crew", plannedQty: 5, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Civil crew", resourceName: "Civil / structural team", plannedQty: 10, availableQty: 6, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
+  /* ---------------------------------- */
+  /* DOCUMENT CONTROLLER SAMPLE DOCUMENTS */
+  /* ---------------------------------- */
+
+  const itsProject = await prisma.project.findFirst({
+    where: {
+      OR: [{ code: "PRJ-001" }, { portfolio: "its" }],
     },
-    {
-      projectCode: "PRJ-003",
-      resources: [
-        { resourceRole: "Traffic Signal", resourceName: "Signal poles - 8m", plannedQty: 24, availableQty: 16, requiredDate: d("2026-05-21"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Electrical", resourceName: "Armoured cable - 4C x 16mm2", plannedQty: 1200, availableQty: 700, requiredDate: d("2026-05-23"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Controller Cabinet", resourceName: "Traffic controller cabinets", plannedQty: 8, availableQty: 0, requiredDate: d("2026-05-25"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Civil", resourceName: "Precast foundation blocks", plannedQty: 24, availableQty: 24, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-
-        { resourceRole: "Electricians", resourceName: "Signal electrical crew", plannedQty: 8, availableQty: 7, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Technicians", resourceName: "Signal testing technicians", plannedQty: 5, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Civil crew", resourceName: "Foundation civil team", plannedQty: 12, availableQty: 10, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
-    },
-    {
-      projectCode: "PRJ-004",
-      resources: [
-        { resourceRole: "Road Marking", resourceName: "Thermoplastic road marking paint", plannedQty: 900, availableQty: 900, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Road Marking", resourceName: "Glass beads", plannedQty: 350, availableQty: 240, requiredDate: d("2026-05-16"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Signage", resourceName: "Temporary diversion signs", plannedQty: 75, availableQty: 75, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-
-        { resourceRole: "Road marking crew", resourceName: "Road marking crew", plannedQty: 14, availableQty: 14, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Safety crew", resourceName: "Traffic safety marshals", plannedQty: 6, availableQty: 5, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
-    },
-    {
-      projectCode: "PRJ-005",
-      resources: [
-        { resourceRole: "CCTV", resourceName: "IP CCTV cameras", plannedQty: 64, availableQty: 52, requiredDate: d("2026-05-18"), healthStatus: HealthStatus.AT_RISK },
-        { resourceRole: "Network", resourceName: "PoE network switches", plannedQty: 12, availableQty: 0, requiredDate: d("2026-05-24"), healthStatus: HealthStatus.CRITICAL },
-        { resourceRole: "Fiber", resourceName: "Fiber patch cords", plannedQty: 180, availableQty: 180, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-
-        { resourceRole: "CCTV technicians", resourceName: "CCTV installation team", plannedQty: 7, availableQty: 7, requiredDate: null, healthStatus: HealthStatus.ON_TRACK },
-        { resourceRole: "Network engineers", resourceName: "Network configuration team", plannedQty: 3, availableQty: 2, requiredDate: null, healthStatus: HealthStatus.AT_RISK },
-      ],
-    },
-  ];
-
-  for (const item of materialResourceData) {
-    const project = await prisma.project.findUnique({
-      where: { code: item.projectCode },
-    });
-
-    if (!project) {
-      throw new Error(
-        `Cannot seed material/resource: project ${item.projectCode} not found`,
-      );
-    }
-
-    await prisma.planningResource.deleteMany({
-      where: { projectId: project.id },
-    });
-
-    await prisma.planningResource.createMany({
-      data: item.resources.map((resource) => ({
-        projectId: project.id,
-        documentId: null,
-        activityId: null,
-        resourceRole: resource.resourceRole,
-        resourceName: resource.resourceName,
-        plannedQty: resource.plannedQty,
-        availableQty: resource.availableQty,
-        requiredDate: resource.requiredDate,
-        healthStatus: resource.healthStatus,
-      })),
-    });
-
-  console.log("Material and resource data seeded.");
-
-}
-
-function getProgressForStoredStatus(status: ActivityStatus) {
-  switch (status) {
-    case ActivityStatus.COMPLETED:
-      return 100;
-    case ActivityStatus.IN_PROGRESS:
-      return 50;
-    case ActivityStatus.DELAYED:
-      return 40;
-    case ActivityStatus.BLOCKED:
-      return 30;
-    case ActivityStatus.ON_HOLD:
-      return 20;
-    case ActivityStatus.NOT_STARTED:
-    default:
-      return 0;
-  }
-}
-
-function getProgressClassForStoredStatus(status: ActivityStatus) {
-  switch (status) {
-    case ActivityStatus.COMPLETED:
-      return "bfg";
-    case ActivityStatus.DELAYED:
-    case ActivityStatus.BLOCKED:
-      return "bfr";
-    default:
-      return "bfb";
-  }
-}
-
-function getBadgeClassForStoredStatus(status: ActivityStatus) {
-  switch (status) {
-    case ActivityStatus.COMPLETED:
-      return "bg2";
-    case ActivityStatus.IN_PROGRESS:
-      return "bb";
-    case ActivityStatus.DELAYED:
-    case ActivityStatus.BLOCKED:
-      return "br";
-    case ActivityStatus.ON_HOLD:
-      return "bt2";
-    case ActivityStatus.NOT_STARTED:
-    default:
-      return "bgr";
-  }
-}
-
-async function seedTaskAssignmentBoardData() {
-  console.log("Seeding task assignment board data...");
-
-  const activities = await prisma.scheduleActivity.findMany({
-    where: { isMilestone: false },
-    orderBy: [{ projectId: "asc" }, { activityName: "asc" }],
   });
 
-  const resources = await prisma.resource.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-  });
-
-  if (!activities.length) {
-    console.log("No schedule activities found.");
-    return;
-  }
-
-  if (!resources.length) {
-    throw new Error("No active resources found. Run seedResources first.");
-  }
-
-  for (let index = 0; index < activities.length; index++) {
-    const activity = activities[index];
-    const resource = resources[index % resources.length];
-
-    await prisma.activityResourceAssignment.upsert({
-      where: {
-        activityId_resourceId: {
-          activityId: activity.id,
-          resourceId: resource.id,
-        },
+  if (itsProject) {
+    const documents = [
+      {
+        documentNo: "ITS-DRW-001",
+        title: "Traffic Signal Controller Cabinet Layout",
+        fileName: "Traffic Signal Controller Cabinet Layout.pdf",
+        revision: "R03",
+        disciplineCode: "its",
+        ownerCode: "engineering",
+        workflowStatusCode: "under-review",
+        approvalStatusCode: "client-pending",
+        dueDate: new Date("2026-03-18"),
+        progressPct: 68,
+        lastUpdate: "Comment received",
+        remarks: "Pending client comments on cabinet layout.",
       },
-      update: {
-        projectId: activity.projectId,
-        plannedStart: activity.startDate,
-        plannedFinish: activity.finishDate,
+      {
+        documentNo: "ITS-MST-014",
+        title: "Master Testing & Commissioning Procedure",
+        fileName: "Master Testing & Commissioning Procedure.pdf",
+        revision: "R01",
+        disciplineCode: "testing",
+        ownerCode: "qaqc",
+        workflowStatusCode: "submitted",
+        approvalStatusCode: "consultant-review",
+        dueDate: new Date("2026-03-20"),
+        progressPct: 45,
+        lastUpdate: "Submitted to consultant",
+        remarks: "Submitted to consultant for review.",
       },
-      create: {
-        projectId: activity.projectId,
-        activityId: activity.id,
-        resourceId: resource.id,
-        allocation: 100,
-        plannedStart: activity.startDate,
-        plannedFinish: activity.finishDate,
+      {
+        documentNo: "ITS-CAL-008",
+        title: "Camera Calibration Report Package",
+        fileName: "Camera Calibration Report Package.pdf",
+        revision: "R02",
+        disciplineCode: "its",
+        ownerCode: "site-team",
+        workflowStatusCode: "approved",
+        approvalStatusCode: "closed",
+        dueDate: new Date("2026-03-12"),
+        progressPct: 100,
+        lastUpdate: "Approved with comments",
+        remarks: "Approved with comments.",
       },
-    });
+      {
+        documentNo: "ITS-MAT-021",
+        title: "Material Submittal for Field Cabinets",
+        fileName: "Material Submittal for Field Cabinets.pdf",
+        revision: "R04",
+        disciplineCode: "material",
+        ownerCode: "procurement",
+        workflowStatusCode: "rejected",
+        approvalStatusCode: "resubmit",
+        dueDate: new Date("2026-03-17"),
+        progressPct: 28,
+        lastUpdate: "Missing compliance sheet",
+        remarks: "Compliance sheet missing. Resubmission required.",
+      },
+      {
+        documentNo: "ITS-SHOP-030",
+        title: "Shop Drawing - Gantry Pole Foundation",
+        fileName: "Shop Drawing - Gantry Pole Foundation.pdf",
+        revision: "R02",
+        disciplineCode: "civil",
+        ownerCode: "engineering",
+        workflowStatusCode: "pending",
+        approvalStatusCode: "internal-review",
+        dueDate: new Date("2026-03-22"),
+        progressPct: 35,
+        lastUpdate: "Internal checker assigned",
+        remarks: "Internal checker assigned.",
+      },
+      {
+        documentNo: "ITS-OM-006",
+        title: "Operation & Maintenance Manual Draft",
+        fileName: "Operation & Maintenance Manual Draft.pdf",
+        revision: "R00",
+        disciplineCode: "om",
+        ownerCode: "document-control",
+        workflowStatusCode: "draft",
+        approvalStatusCode: "not-submitted",
+        dueDate: new Date("2026-03-25"),
+        progressPct: 18,
+        lastUpdate: "Draft preparation",
+        remarks: "Draft preparation in progress.",
+      },
+    ];
 
-    const existingProgress = await prisma.activityStatusUpdate.findFirst({
-      where: { scheduleActivityId: activity.id },
-    });
-
-    if (!existingProgress) {
-      await prisma.activityStatusUpdate.create({
-        data: {
-          scheduleActivityId: activity.id,
-          status: activity.status,
-          progressPercentage: getProgressForStoredStatus(activity.status),
-          progressColorClass: getProgressClassForStoredStatus(activity.status),
-          statusBadgeClass: getBadgeClassForStoredStatus(activity.status),
-          remarks: "Initial seeded task progress",
-          updatedBy: "Seed",
+    for (const item of documents) {
+      const existingDocument = await prisma.planningDocument.findFirst({
+        where: {
+          projectId: itsProject.id,
+          documentNo: item.documentNo,
         },
       });
+
+      const documentData = {
+        title: item.title,
+        fileName: item.fileName,
+        revision: item.revision,
+
+        planType: "DOCUMENT_REGISTER",
+        status: RecordStatus.ACTIVE,
+        uploadedBy: admin.name,
+
+        dueDate: item.dueDate,
+        progressPct: item.progressPct,
+        lastUpdate: item.lastUpdate,
+        remarks: item.remarks,
+        importSource: DocumentImportSource.MANUAL,
+        isActive: true,
+
+        stage: {
+          connect: {
+            code: "design",
+          },
+        },
+
+        discipline: {
+          connect: {
+            code: item.disciplineCode,
+          },
+        },
+
+        owner: {
+          connect: {
+            code: item.ownerCode,
+          },
+        },
+
+        workflowStatus: {
+          connect: {
+            code: item.workflowStatusCode,
+          },
+        },
+
+        approvalStatus: {
+          connect: {
+            code: item.approvalStatusCode,
+          },
+        },
+      };
+
+      if (existingDocument) {
+        await prisma.planningDocument.update({
+          where: {
+            id: existingDocument.id,
+          },
+          data: documentData,
+        });
+      } else {
+        await prisma.planningDocument.create({
+          data: {
+            project: {
+              connect: {
+                id: itsProject.id,
+              },
+            },
+            documentNo: item.documentNo,
+            ...documentData,
+          },
+        });
+      }
     }
+
+    console.log("Document controller sample documents seeded.");
   }
 
-  console.log(`Seeded ${activities.length} task assignment records.`);
-}
+  await seedSampleScheduleImportWithLocations();
+  await seedFieldResourcesAndAssignments();
 
-
-
-  await seedResources();
   await seedDocumentationStatusRecords();
   await seedRevenueBilling();
   await seedInvoices();
-  await seedMaterialResource();
-  await seedTaskAssignmentBoardData();
+
+  await seedResources();
 
   console.log("Seed completed successfully.");
 }}

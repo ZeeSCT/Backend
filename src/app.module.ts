@@ -21,6 +21,8 @@ import {ResourceAssignmentModule} from './modules/admin/resource-assignment/reso
 import { RolePermissionsModule } from "./modules/admin/Access Control/Roles&Permission/roles.module";
 import { SystemSettingsModule } from "./modules/admin/Systemsetting/system-settings.module";
 import { MaterialResourceModule} from "./modules/projects/material-resource/module";
+import { TaskAssignmentBoardModule } from './modules/projects/task-assignment/task.module';
+import { DocumentStatusModule } from "./modules/admin/document-status/document-status.module";
 
 @Module({
   imports: [
@@ -33,6 +35,7 @@ import { MaterialResourceModule} from "./modules/projects/material-resource/modu
     ScreenCatalogModule,
     SchedulesModule,
     ResourceAssignmentModule,
+    DocumentStatusModule,
     DashboardModule,
     PortfolioOverviewModule,
     ExecutiveModule,
@@ -47,6 +50,7 @@ import { MaterialResourceModule} from "./modules/projects/material-resource/modu
     RolePermissionsModule,
     MaterialResourceModule,
     SystemSettingsModule,
+    TaskAssignmentBoardModule,
     
   ],
 })

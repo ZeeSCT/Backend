@@ -5,7 +5,7 @@ import { QaqcService } from './qaqc.service';
 @ApiTags('QA/QC Screens')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('api/v1/qaqc')
+@Controller('/qaqc')
 export class QaqcController {
   constructor(private service: QaqcService) {}
   @Get() findAll(){return this.service.findAll()}

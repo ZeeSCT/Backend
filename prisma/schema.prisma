@@ -6,6 +6,12 @@ datasource db {
   provider = "postgresql"
 }
 
+/**
+ * --------------------------------------------------------------------------
+ * ENUMS
+ * --------------------------------------------------------------------------
+ */
+
 enum UserRole {
   SUPER_ADMIN
   ADMIN
@@ -82,16 +88,6 @@ enum LabourReadinessStatus {
 }
 
 
-/**
- * --------------------------------------------------------------------------
- */
-/**
- * SCHEDULE IMPORT ENUMS
- */
-/**
- * --------------------------------------------------------------------------
- */
-
 enum ScheduleUploadStatus {
   PROCESSING
   VALIDATED
@@ -116,21 +112,49 @@ enum ResourceType {
   SITE_ENGINEER
   FIELD_ENGINEER
   SUPERVISOR
-  TECHNICIAN
   CREW
+  TECHNICIAN
   EQUIPMENT
   MATERIAL
   VENDOR
   SUBCONTRACTOR
 }
 
+enum ScheduleLocationSource {
+  NONE
+  EXCEL_PARENT_ROW
+  EXCEL_WORK_SECTION
+  MANUAL
+}
+
+enum ResourceAssignmentScope {
+  PROJECT
+  ROAD_LOCATION
+  WBS_ITEM
+  ACTIVITY
+  PACKAGE
+}
+
+enum ActivityAssignmentStatus {
+  UNASSIGNED
+  PARTIALLY_ASSIGNED
+  ASSIGNED
+}
+
+enum ResourceAvailabilityStatus {
+  AVAILABLE
+  HIGH_LOAD
+  OVER_ALLOCATED
+}
+
+enum DocumentImportSource {
+  MANUAL
+  EXCEL_IMPORT
+}
+
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * USERS
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -142,34 +166,39 @@ model User {
   role         UserRole @default(ENGINEER)
   department   String?
   isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   managedProjects Project[] @relation("ProjectManager")
 
-  // Schedule uploads performed by this user
   scheduleUploads ProjectScheduleUpload[] @relation("ScheduleUploadUser")
+
+  // Optional link to Resource.
+  // Useful when a mobile app user is also a field engineer/resource.
+  resources Resource[]
+
+  @@index([role])
+  @@index([isActive])
+  @@index([email])
 }
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
- * OPTIONAL CLIENT MASTER
- */
-/**
+ * CLIENT MASTER
  * --------------------------------------------------------------------------
  */
 
 model Client {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id          String  @id @default(cuid())
+  name        String  @unique
   email       String?
   phone       String?
   address     String?
   contactName String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   projects Project[]
 
@@ -178,11 +207,67 @@ model Client {
 
 /**
  * --------------------------------------------------------------------------
+ * LOCATION / ROAD MASTER
+ * --------------------------------------------------------------------------
  */
+
+model RoadLocation {
+  id String @id @default(cuid())
+
+  name           String
+  normalizedName String
+  roadCode       String
+
+  // PostgreSQL supports scalar lists.
+  // Store alternate names like AL KHAIL ST, AL KHAIL STREET, etc.
+  aliases String[] @default([])
+
+  isActive     Boolean @default(true)
+  displayOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectLinks ProjectRoadLocation[]
+
+  wbsItems           WbsItem[]
+  scheduleActivities ScheduleActivity[]
+  milestones         Milestone[]
+
+  planningActivities PlanningActivity[]
+  planningMilestones PlanningMilestone[]
+
+  projectResourceAssignments  ProjectResourceAssignment[]
+  activityResourceAssignments ActivityResourceAssignment[]
+
+  assets Asset[]
+
+  // roadCode is NOT unique because multiple streets can share D68, D83, E44, etc.
+  @@unique([normalizedName, roadCode])
+  @@index([roadCode])
+  @@index([normalizedName])
+  @@index([isActive])
+}
+
+model ProjectRoadLocation {
+  id String @id @default(cuid())
+
+  projectId      String
+  roadLocationId String
+
+  createdAt DateTime @default(now())
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  roadLocation RoadLocation @relation(fields: [roadLocationId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, roadLocationId])
+  @@index([projectId])
+  @@index([roadLocationId])
+}
+
 /**
+ * --------------------------------------------------------------------------
  * PROJECT
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -192,28 +277,25 @@ model Project {
   name       String
   clientName String
 
-  // Optional proper client relation.
-  // Kept optional so existing project records do not break.
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
-  // Keep this for now because your existing data/API may already use it.
-  // Store values like: its, traffic, its-maint, traffic-maint
+  // Existing portfolio string retained for compatibility.
   portfolio String
 
-  // Proper relation to PortfolioCategory
   portfolioCategoryId String?
   portfolioCategory   PortfolioCategory? @relation(fields: [portfolioCategoryId], references: [id], onDelete: SetNull)
 
   projectManagerId String?
-  contractValue    Decimal? @db.Decimal(18, 2)
+  projectManager   User?   @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
+
+  contractValue Decimal? @db.Decimal(18, 2)
 
   completionPct   Int          @default(0)
   plannedProgress Int          @default(0)
   actualProgress  Int          @default(0)
   healthStatus    HealthStatus @default(ON_TRACK)
 
-  // Dashboard fields for portfolio overview
   delayedApprovals   Int      @default(0)
   blockedItems       Int      @default(0)
   billingReadyAmount Decimal? @db.Decimal(18, 2)
@@ -224,8 +306,6 @@ model Project {
   plannedFinish  DateTime?
   forecastFinish DateTime?
 
-  // Contract dates from your schedule/project ERD.
-  // Optional so existing data does not break.
   contractStartDate DateTime?
   contractEndDate   DateTime?
 
@@ -233,8 +313,6 @@ model Project {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  projectManager User? @relation("ProjectManager", fields: [projectManagerId], references: [id])
 
   tenders          Tender[]
   documents        PlanningDocument[]
@@ -247,36 +325,36 @@ model Project {
   purchaseOrders   PurchaseOrder[]
   assets           Asset[]
 
-  // Revenue & billing
   invoices Invoice[]
   billing  ProjectBilling? @relation("ProjectBillingRelation")
 
-  // Schedule upload / imported WBS structure
   scheduleUploads             ProjectScheduleUpload[]
   wbsItems                    WbsItem[]
   scheduleActivities          ScheduleActivity[]
   scheduleMilestones          Milestone[]
   scheduleResourceAssignments ActivityResourceAssignment[]
 
+  roadLocations ProjectRoadLocation[]
+
+  // General project/street/field engineer assignment model.
+  projectResourceAssignments ProjectResourceAssignment[]
+
   @@index([clientId])
   @@index([portfolio])
   @@index([portfolioCategoryId])
+  @@index([projectManagerId])
   @@index([status])
   @@index([healthStatus])
 }
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * PORTFOLIO CATEGORY
- */
-/**
  * --------------------------------------------------------------------------
  */
 
 model PortfolioCategory {
-  id           String  @id @default(uuid())
+  id           String  @id @default(cuid())
   code         String  @unique
   name         String  @unique
   description  String?
@@ -294,11 +372,7 @@ model PortfolioCategory {
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * SCHEDULE UPLOAD / IMPORT MODELS
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -308,8 +382,6 @@ model ProjectScheduleUpload {
   projectId String
   fileName  String
 
-  // Revision number per project.
-  // Example: PRJ-001 revision 1, revision 2, revision 3.
   revisionNo Int
 
   uploadedById String?
@@ -325,6 +397,9 @@ model ProjectScheduleUpload {
   fileSize   Int?
   importedAt DateTime?
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   uploadedBy User? @relation("ScheduleUploadUser", fields: [uploadedById], references: [id], onDelete: SetNull)
@@ -333,9 +408,6 @@ model ProjectScheduleUpload {
   activities ScheduleActivity[]
   milestones Milestone[]
   errors     ScheduleImportError[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
   @@unique([projectId, revisionNo])
   @@index([projectId])
@@ -361,8 +433,17 @@ model WbsItem {
   duration   Int?
   totalFloat Int?
 
-  // Original Excel row number for traceability
   rowNumber Int?
+
+  // Location context from Excel hierarchy.
+  // Example row: AL KHAIL STREET
+  roadLocationId String?
+  roadLocation   RoadLocation? @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
+
+  rawLocationName String?
+  rawRoadCode     String?
+
+  locationSource ScheduleLocationSource @default(NONE)
 
   project Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   upload  ProjectScheduleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
@@ -372,17 +453,18 @@ model WbsItem {
 
   activities ScheduleActivity[]
 
+  projectResourceAssignments ProjectResourceAssignment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // WBS code can repeat across different uploads/revisions.
-  // Therefore uniqueness must be per upload, not per project.
   @@unique([uploadId, wbsCode])
   @@index([projectId])
   @@index([uploadId])
   @@index([parentId])
   @@index([wbsCode])
   @@index([wbsLevel])
+  @@index([roadLocationId])
 }
 
 model ScheduleActivity {
@@ -405,8 +487,21 @@ model ScheduleActivity {
 
   status ActivityStatus @default(NOT_STARTED)
 
-  // Original Excel row number for traceability
   rowNumber Int?
+
+  // Location fields for mobile filtering.
+  roadLocationId String?
+  roadLocation   RoadLocation? @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
+
+  rawLocationName String?
+  rawRoadCode     String?
+
+  // Useful parsed context from Excel hierarchy.
+  packageName     String?
+  workSectionName String?
+  assetReference  String?
+
+  locationSource ScheduleLocationSource @default(NONE)
 
   project Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   upload  ProjectScheduleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
@@ -419,10 +514,11 @@ model ScheduleActivity {
   statusUpdates       ActivityStatusUpdate[]
   taskProgressUpdates TaskProgressUpdate[]
 
+  projectResourceAssignments ProjectResourceAssignment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Activity code can repeat across schedule revisions.
   @@unique([uploadId, activityCode])
   @@index([projectId])
   @@index([uploadId])
@@ -433,6 +529,8 @@ model ScheduleActivity {
   @@index([isCritical])
   @@index([startDate])
   @@index([finishDate])
+  @@index([roadLocationId])
+  @@index([rawRoadCode])
 }
 
 model Milestone {
@@ -450,6 +548,18 @@ model Milestone {
 
   status ActivityStatus @default(NOT_STARTED)
 
+  // Location fields inherited from related schedule activity.
+  roadLocationId String?
+  roadLocation   RoadLocation? @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
+
+  rawLocationName String?
+  rawRoadCode     String?
+  packageName     String?
+  workSectionName String?
+  assetReference  String?
+
+  locationSource ScheduleLocationSource @default(NONE)
+
   project  Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   upload   ProjectScheduleUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
   activity ScheduleActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
@@ -457,12 +567,12 @@ model Milestone {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Milestone code can repeat across schedule revisions.
   @@unique([uploadId, milestoneCode])
   @@index([projectId])
   @@index([uploadId])
   @@index([status])
   @@index([plannedDate])
+  @@index([roadLocationId])
 }
 
 model ScheduleImportError {
@@ -487,11 +597,7 @@ model ScheduleImportError {
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * RESOURCE / FIELD EXECUTION MODELS
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -503,22 +609,74 @@ model Resource {
   name String
   type ResourceType @default(RESOURCE)
 
-  discipline  String?
-  designation String?
-  email       String?
-  phone       String?
+  discipline   String?
+  designation  String?
+
+  email String?
+  phone String?
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   isActive Boolean @default(true)
 
   activityAssignments ActivityResourceAssignment[]
+  projectAssignments  ProjectResourceAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([type])
   @@index([discipline])
+  @@index([designation])
   @@index([isActive])
   @@index([email])
+  @@index([userId])
+}
+
+model ProjectResourceAssignment {
+  id String @id @default(cuid())
+
+  projectId  String
+  resourceId String
+
+  // Optional scope fields.
+  // This allows assignment at project, road, WBS, package, or activity level.
+  scope ResourceAssignmentScope @default(PROJECT)
+
+  roadLocationId     String?
+  wbsItemId          String?
+  scheduleActivityId String?
+
+  packageName     String?
+  workSectionName String?
+
+  plannedStart  DateTime?
+  plannedFinish DateTime?
+
+  remarks String?
+
+  isActive Boolean @default(true)
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  roadLocation     RoadLocation?     @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
+  wbsItem          WbsItem?          @relation(fields: [wbsItemId], references: [id], onDelete: SetNull)
+  scheduleActivity ScheduleActivity? @relation(fields: [scheduleActivityId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([resourceId])
+  @@index([scope])
+  @@index([roadLocationId])
+  @@index([wbsItemId])
+  @@index([scheduleActivityId])
+  @@index([plannedStart])
+  @@index([plannedFinish])
+  @@index([isActive])
 }
 
 model ActivityResourceAssignment {
@@ -527,6 +685,12 @@ model ActivityResourceAssignment {
   projectId  String
   activityId String
   resourceId String
+
+  // Optional direct location reference.
+  // Usually this should match activity.roadLocationId.
+  // Kept here to make field/mobile filtering faster and simpler.
+  roadLocationId String?
+  roadLocation   RoadLocation? @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
 
   allocation   Float?
   quantity     Float?
@@ -550,6 +714,7 @@ model ActivityResourceAssignment {
   @@index([projectId])
   @@index([activityId])
   @@index([resourceId])
+  @@index([roadLocationId])
   @@index([plannedStart])
   @@index([plannedFinish])
   @@index([labourStatus])
@@ -570,12 +735,10 @@ model ActivityStatusUpdate {
   uploadedFileName String?
   uploadedFileType String?
 
-  // Keep as string for now to avoid forcing a User relation.
-  // Later you can change this to updatedById + User relation.
   updatedBy String?
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   scheduleActivity ScheduleActivity @relation(fields: [scheduleActivityId], references: [id], onDelete: Cascade)
 
@@ -612,11 +775,59 @@ model TaskProgressUpdate {
 
 /**
  * --------------------------------------------------------------------------
+ * DOCUMENT STATUS MODELS
+ * --------------------------------------------------------------------------
  */
+
+model DocumentDisciplineLookup {
+  code         String  @id
+  label        String
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  planningDocuments PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model DocumentOwnerLookup {
+  code         String  @id
+  label        String
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  planningDocuments PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model DocumentWorkflowStatusLookup {
+  code         String  @id
+  label        String
+  tone         String?
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  planningDocuments PlanningDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
 /**
+ * --------------------------------------------------------------------------
  * INVOICING
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -658,7 +869,7 @@ model InvoiceItem {
 }
 
 model ProjectBilling {
-  id        String @id @default(uuid())
+  id        String @id @default(cuid())
   projectId String @unique
 
   project Project @relation("ProjectBillingRelation", fields: [projectId], references: [id], onDelete: Cascade)
@@ -670,15 +881,12 @@ model ProjectBilling {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
 }
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * LOOKUPS
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -764,16 +972,6 @@ model ActivitySeverityLookup {
   @@index([displayOrder])
 }
 
-/**
- * --------------------------------------------------------------------------
- */
-/**
- * Roles&Permissions
- */
-/**
- * --------------------------------------------------------------------------
- */
-
 model RolePermission {
   id String @id @default(cuid())
 
@@ -832,11 +1030,7 @@ model SystemSetting {
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * TENDERS
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -855,10 +1049,11 @@ model Tender {
   riskScore          Int?
   marginPct          Decimal?     @db.Decimal(5, 2)
   status             RecordStatus @default(ACTIVE)
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
 
-  project Project? @relation(fields: [projectId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([stage])
@@ -867,11 +1062,7 @@ model Tender {
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * DOCUMENTATION / PLANNING
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -899,8 +1090,6 @@ model PlanningDocument {
 
   uploadedBy String?
   uploadedAt DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -911,6 +1100,36 @@ model PlanningDocument {
   milestones PlanningMilestone[]
   resources  PlanningResource[]
 
+  documentNo String?
+  title      String?
+
+  documentType     String?
+  documentCategory String?
+  documentTypeCode String?
+  packageName      String?
+  delayIndicator   String?
+
+  disciplineCode String?
+  discipline     DocumentDisciplineLookup? @relation(fields: [disciplineCode], references: [code])
+
+  ownerCode String?
+  owner     DocumentOwnerLookup? @relation(fields: [ownerCode], references: [code])
+
+  workflowStatusCode String?                       @default("draft")
+  workflowStatus     DocumentWorkflowStatusLookup? @relation(fields: [workflowStatusCode], references: [code])
+
+  progressPct Int @default(0)
+
+  lastUpdate String?
+  remarks    String?
+
+  importSource DocumentImportSource @default(MANUAL)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([projectId])
   @@index([stageCode])
   @@index([approvalStatusCode])
@@ -920,51 +1139,95 @@ model PlanningDocument {
 }
 
 model PlanningActivity {
-  id              String       @id @default(cuid())
-  projectId       String
-  documentId      String?
-  wbsCode         String?
-  activityId      String
-  activityName    String
-  discipline      String?
-  location        String?
-  durationDays    Int?
-  plannedStart    DateTime?
-  plannedFinish   DateTime?
-  actualStart     DateTime?
-  actualFinish    DateTime?
+  id String @id @default(cuid())
+
+  projectId  String
+  documentId String?
+
+  wbsCode      String?
+  activityId   String
+  activityName String
+
+  discipline String?
+
+  // Existing text location retained for compatibility.
+  location String?
+
+  // New proper location relation.
+  roadLocationId String?
+  roadLocation   RoadLocation? @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
+
+  rawLocationName String?
+  rawRoadCode     String?
+  packageName     String?
+  workSectionName String?
+  assetReference  String?
+
+  locationSource ScheduleLocationSource @default(NONE)
+
+  durationDays Int?
+
+  plannedStart  DateTime?
+  plannedFinish DateTime?
+  actualStart   DateTime?
+  actualFinish  DateTime?
+
   floatDays       Int?
-  percentComplete Int          @default(0)
-  owner           String?
-  isCritical      Boolean      @default(false)
-  healthStatus    HealthStatus @default(ON_TRACK)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  percentComplete Int  @default(0)
+
+  owner      String?
+  isCritical Boolean @default(false)
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, activityId])
   @@index([projectId])
+  @@index([documentId])
   @@index([activityId])
   @@index([wbsCode])
   @@index([healthStatus])
+  @@index([roadLocationId])
+  @@index([rawRoadCode])
 }
 
 model PlanningMilestone {
-  id             String       @id @default(cuid())
-  projectId      String
-  documentId     String?
-  milestoneCode  String?
-  milestoneName  String
-  baselineDate   DateTime?
-  forecastDate   DateTime?
-  actualDate     DateTime?
-  delayDays      Int          @default(0)
+  id String @id @default(cuid())
+
+  projectId  String
+  documentId String?
+
+  milestoneCode String?
+  milestoneName String
+
+  baselineDate DateTime?
+  forecastDate DateTime?
+  actualDate   DateTime?
+
+  delayDays      Int     @default(0)
   linkedActivity String?
-  healthStatus   HealthStatus @default(ON_TRACK)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+
+  // New location relation.
+  roadLocationId String?
+  roadLocation   RoadLocation? @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
+
+  rawLocationName String?
+  rawRoadCode     String?
+  packageName     String?
+  workSectionName String?
+  assetReference  String?
+
+  locationSource ScheduleLocationSource @default(NONE)
+
+  healthStatus HealthStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
@@ -973,24 +1236,32 @@ model PlanningMilestone {
   @@index([documentId])
   @@index([healthStatus])
   @@index([delayDays])
+  @@index([roadLocationId])
 }
 
 model PlanningResource {
-  id           String       @id @default(cuid())
-  projectId    String
-  documentId   String?
-  activityId   String?
+  id String @id @default(cuid())
+
+  projectId  String
+  documentId String?
+
+  activityId String?
+
   resourceRole String
   resourceName String?
-  plannedQty   Int          @default(0)
-  availableQty Int          @default(0)
+
+  plannedQty   Int @default(0)
+  availableQty Int @default(0)
+
   requiredDate DateTime?
+
   healthStatus HealthStatus @default(ON_TRACK)
   materialStatus MaterialAvailabilityStatus @default(NOT_ASSESSED)
   deliveryStatus MaterialDeliveryStatus @default(NOT_PLANNED)
   labourStatus   LabourReadinessStatus @default(NOT_ASSESSED)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+
 
   project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   document PlanningDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
@@ -1006,11 +1277,7 @@ model PlanningResource {
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * QA/QC
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -1025,8 +1292,9 @@ model Inspection {
   outcome        String?
   healthStatus   HealthStatus @default(ON_TRACK)
   notes          String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -1044,8 +1312,9 @@ model Ncr {
   severity     String?
   healthStatus HealthStatus @default(AT_RISK)
   dateRaised   DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -1055,11 +1324,7 @@ model Ncr {
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * PROCUREMENT / MATERIALS
- */
-/**
  * --------------------------------------------------------------------------
  */
 
@@ -1073,8 +1338,9 @@ model MaterialRequest {
   priority     String?
   healthStatus HealthStatus @default(ON_TRACK)
   requestDate  DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -1092,8 +1358,9 @@ model PurchaseOrder {
   issuedAt         DateTime?
   expectedDelivery DateTime?
   healthStatus     HealthStatus @default(ON_TRACK)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -1103,27 +1370,33 @@ model PurchaseOrder {
 
 /**
  * --------------------------------------------------------------------------
- */
-/**
  * ASSETS
- */
-/**
  * --------------------------------------------------------------------------
  */
 
 model Asset {
-  id           String       @id @default(cuid())
-  assetCode    String       @unique
-  projectId    String
-  name         String
-  assetType    String
-  location     String?
+  id        String @id @default(cuid())
+  assetCode String @unique
+  projectId String
+
+  name      String
+  assetType String
+
+  // Existing text location retained.
+  location String?
+
+  // New proper road/street relation.
+  roadLocationId String?
+  roadLocation   RoadLocation? @relation(fields: [roadLocationId], references: [id], onDelete: SetNull)
+
   healthStatus HealthStatus @default(ON_TRACK)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([healthStatus])
+  @@index([roadLocationId])
 }
